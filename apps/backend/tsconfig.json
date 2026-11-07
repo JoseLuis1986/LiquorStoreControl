@@ -8,7 +8,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
-    "incremental": true
+    "incremental": false
   },
   "include": ["src/**/*"]
 }
