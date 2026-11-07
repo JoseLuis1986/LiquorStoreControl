@@ -56,6 +56,11 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   defaultUnitPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minStock?: number;
 }
 
 export class UpdateProductDto {
@@ -79,6 +84,11 @@ export class UpdateProductDto {
   @IsNumber()
   @Min(0)
   defaultUnitPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minStock?: number;
 }
 
 export class CreatePresentationDto {

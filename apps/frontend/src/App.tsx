@@ -14,15 +14,19 @@ import {
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AdminHome } from './pages/AdminHome';
+import { AuditPage } from './pages/AuditPage';
 import { CashSalesPage } from './pages/CashSalesPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { LoginPage } from './pages/LoginPage';
 import { PosTerminal } from './pages/PosTerminal';
 import { ProductsPage } from './pages/ProductsPage';
 import { PurchasesPage } from './pages/PurchasesPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { ReturnsPage } from './pages/ReturnsPage';
+import { UsersPage } from './pages/UsersPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
@@ -61,6 +65,18 @@ function Shell() {
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Button component={RouterLink} to="/" size="small">
                 Inicio
+              </Button>
+              <Button component={RouterLink} to="/dashboard" size="small" variant="contained">
+                Dashboard
+              </Button>
+              <Button component={RouterLink} to="/reports" size="small">
+                Reportes
+              </Button>
+              <Button component={RouterLink} to="/audit" size="small">
+                Auditoría
+              </Button>
+              <Button component={RouterLink} to="/users" size="small">
+                Usuarios
               </Button>
               <Button component={RouterLink} to="/products" size="small">
                 Productos
@@ -111,6 +127,38 @@ function Shell() {
             element={
               <RequireAuth>
                 <AdminHome />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireAuth>
+                <ReportsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/audit"
+            element={
+              <RequireAuth>
+                <AuditPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <RequireAuth>
+                <UsersPage />
               </RequireAuth>
             }
           />

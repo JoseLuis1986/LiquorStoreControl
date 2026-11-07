@@ -1,6 +1,10 @@
 import { PrismaClient, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  PERMISSIONS,
+} from '../../apps/backend/src/permissions/permission-codes';
 
 const prisma = new PrismaClient();
 
@@ -107,9 +111,13 @@ async function main() {
   } else {
     await prisma.product.update({
       where: { id: product.id },
-      data: { defaultUnitPrice: 450 },
+      data: { defaultUnitPrice: 450, minStock: 100 },
     });
   }
+  await prisma.product.update({
+    where: { id: product.id },
+    data: { minStock: 100 },
+  });
 
   const supplier =
     (await prisma.supplier.findUnique({
@@ -208,6 +216,37 @@ async function main() {
     });
   }
 
+  for (const p of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { code: p.code },
+      create: { code: p.code, name: p.name, module: p.module },
+      update: { name: p.name, module: p.module },
+    });
+  }
+  const allPerms = await prisma.permission.findMany();
+  const byCode = new Map(allPerms.map((p) => [p.code, p.id]));
+  for (const [role, codes] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
+    for (const code of codes) {
+      const permissionId = byCode.get(code);
+      if (!permissionId) continue;
+      await prisma.rolePermission.upsert({
+        where: {
+          tenantId_role_permissionId: {
+            tenantId: tenant.id,
+            role: role as UserRole,
+            permissionId,
+          },
+        },
+        create: {
+          tenantId: tenant.id,
+          role: role as UserRole,
+          permissionId,
+        },
+        update: {},
+      });
+    }
+  }
+
   // eslint-disable-next-line no-console
   console.log(`
 Seed OK
@@ -215,10 +254,10 @@ Seed OK
 Tenant:   ${tenant.name} (${tenant.slug})
 Admin:    ${email} / ${password}
 Warehouse:${warehouse.code}
-Product:  ${product.sku}
+Product:  ${product.sku} (minStock=100, price=450)
 Customer: ${customer.code} — ${customer.name}
 Supplier: ${supplier.code} — ${supplier.name}
-Price:    JW-RED-750 @ $450 / unidad base
+Permisos: ${PERMISSIONS.length} códigos · roles seeded
 ${cardToken ? `Card token (guardar, solo se muestra al emitir/seed): ${cardToken}` : 'Card token: (ya existía; re-emite desde UI si lo necesitas)'}
 `);
 }

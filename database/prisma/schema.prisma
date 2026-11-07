@@ -151,6 +151,9 @@ model Tenant {
   cashSessions                CashSession[]
   returns                     StockReturn[]
   customerPrices              CustomerPrice[]
+  auditLogs                   AuditLog[]
+  rolePermissions             RolePermission[]
+  userPermissions             UserPermission[]
 
   @@map("tenants")
 }
@@ -175,6 +178,8 @@ model User {
   cashSessionsClosed CashSession[] @relation("CashSessionClosedBy")
   returns            StockReturn[] @relation("ReturnCreatedBy")
   payments           Payment[]     @relation("PaymentRecordedBy")
+  auditLogs          AuditLog[]    @relation("AuditLogActor")
+  userPermissions    UserPermission[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -279,6 +284,8 @@ model Product {
   active           Boolean         @default(true)
   /// Precio de venta por unidad base (MXN). Listas por cliente pueden sobreescribir.
   defaultUnitPrice Decimal         @default(0) @map("default_unit_price") @db.Decimal(18, 2)
+  /// Alerta de stock bajo cuando el balance general ≤ este mínimo (unidad base).
+  minStock         Decimal         @default(0) @map("min_stock") @db.Decimal(18, 6)
   createdAt        DateTime        @default(now()) @map("created_at")
   updatedAt        DateTime        @updatedAt @map("updated_at")
 
@@ -703,4 +710,76 @@ model StockReturnLine {
 
   @@index([returnId])
   @@map("return_lines")
+}
+
+// ─── Audit & permissions (Fase 3) ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  context    String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  actor  User?  @relation("AuditLogActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+/// Catálogo global de permisos (código estable).
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  module      String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+/// Permisos por rol dentro de un tenant (customizables).
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  role         UserRole
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([tenantId, role, permissionId])
+  @@index([tenantId, role])
+  @@map("role_permissions")
+}
+
+/// Override por usuario (grant o deny).
+model UserPermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  granted      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([tenantId, userId, permissionId])
+  @@index([tenantId, userId])
+  @@map("user_permissions")
 }
