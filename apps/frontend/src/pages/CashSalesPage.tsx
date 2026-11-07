@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { printReceiptHtml } from '../peripherals/printer';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 
@@ -313,22 +314,9 @@ export function CashSalesPage() {
                     sx={{ ml: 1 }}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.open(
-                        receiptUrl(s.id),
-                        '_blank',
-                        // token via temporary approach: fetch blob
+                      void printReceiptHtml(receiptUrl(s.id), token!).catch(
+                        (err) => setError(err.message),
                       );
-                      // open with auth header via fetch
-                      void (async () => {
-                        const html = await fetch(receiptUrl(s.id), {
-                          headers: { Authorization: `Bearer ${token}` },
-                        }).then((r) => r.text());
-                        const w = window.open('', '_blank');
-                        if (w) {
-                          w.document.write(html);
-                          w.document.close();
-                        }
-                      })();
                     }}
                   >
                     Comprobante
@@ -366,16 +354,11 @@ export function CashSalesPage() {
                 <TableCell>
                   <Button
                     size="small"
-                    onClick={async () => {
-                      const html = await fetch(receiptUrl(s.id), {
-                        headers: { Authorization: `Bearer ${token}` },
-                      }).then((r) => r.text());
-                      const w = window.open('', '_blank');
-                      if (w) {
-                        w.document.write(html);
-                        w.document.close();
-                      }
-                    }}
+                    onClick={() =>
+                      void printReceiptHtml(receiptUrl(s.id), token!).catch(
+                        (err) => setError(err.message),
+                      )
+                    }
                   >
                     Imprimir
                   </Button>

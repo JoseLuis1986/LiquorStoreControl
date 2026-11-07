@@ -31,9 +31,9 @@ export function AdminHome() {
           </Alert>
         ) : null}
         <Alert severity="success">
-          Fase 1: Inventario → Clientes (QR) → POS → Historial. Fase 2: Compras →
-          Caja/Ventas → Devoluciones. Fase 3: Dashboard → Reportes/exportes →
-          Auditoría → Usuarios/permisos.
+          Fase 1–3: inventario, POS, compras/caja, dashboard/reportes. Fase 4:
+          sucursales/transferencias, sockets realtime, cola offline, analítica y
+          PWA instalable (Terminal POS).
         </Alert>
       </Stack>
     </Paper>
