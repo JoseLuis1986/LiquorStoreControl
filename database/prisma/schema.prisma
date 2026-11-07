@@ -1,0 +1,521 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  EMPLOYEE
+  CUSTOMER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum CardStatus {
+  ACTIVE
+  REVOKED
+  LOST
+  EXPIRED
+}
+
+enum UnitKind {
+  COUNT
+  VOLUME
+  WEIGHT
+  OTHER
+}
+
+enum ProductModality {
+  UNIT
+  CASE
+  BULK
+}
+
+enum InventoryMovementType {
+  PURCHASE_IN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  ALLOCATION_OUT
+  ALLOCATION_REVERSAL
+  SALE_OUT
+  SALE_REVERSAL
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  RECEIVED
+  CANCELLED
+}
+
+enum AllocationStatus {
+  COMPLETED
+  REVERSED
+}
+
+enum SaleTrigger {
+  ALLOCATION
+  CONSUMPTION
+  MANUAL
+}
+
+enum SaleStatus {
+  PENDING
+  PAID
+  PARTIAL
+  CANCELLED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ─── Tenant & Auth ────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  users                       User[]
+  customers                   Customer[]
+  cards                       Card[]
+  unitsOfMeasure              UnitOfMeasure[]
+  products                    Product[]
+  productPresentations        ProductPresentation[]
+  warehouses                  Warehouse[]
+  inventoryBalances           InventoryBalance[]
+  inventoryMovements          InventoryMovement[]
+  orders                      Order[]
+  allocations                 Allocation[]
+  customerAllocationBalances  CustomerAllocationBalance[]
+  consumptions                Consumption[]
+  sales                       Sale[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  email        String
+  passwordHash String     @map("password_hash")
+  fullName     String     @map("full_name")
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  customerId   String?    @map("customer_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  customer     Customer?  @relation(fields: [customerId], references: [id])
+  allocations  Allocation[]  @relation("AllocationCreatedBy")
+  consumptions Consumption[] @relation("ConsumptionCreatedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+// ─── Customers & Cards ────────────────────────────────────────────────────────
+
+model Customer {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  code         String
+  name         String
+  /// JSON array of billing modes, e.g. ["CHARGE_ON_ALLOCATION","CHARGE_ON_CONSUMPTION"]
+  billingModes Json           @default("[\"CHARGE_ON_ALLOCATION\"]") @map("billing_modes")
+  email        String?
+  phone        String?
+  status       CustomerStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  tenant              Tenant                       @relation(fields: [tenantId], references: [id])
+  cards               Card[]
+  users               User[]
+  allocations         Allocation[]
+  allocationBalances  CustomerAllocationBalance[]
+  consumptions        Consumption[]
+  sales               Sale[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@map("customers")
+}
+
+model Card {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  customerId String     @map("customer_id") @db.Uuid
+  /// SHA-256 (hex) del token opaco; el token en claro NUNCA se persiste
+  tokenHash  String     @unique @map("token_hash")
+  label      String?
+  status     CardStatus @default(ACTIVE)
+  issuedAt   DateTime   @default(now()) @map("issued_at")
+  revokedAt  DateTime?  @map("revoked_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("cards")
+}
+
+// ─── Catalog ──────────────────────────────────────────────────────────────────
+
+model UnitOfMeasure {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String
+  name      String
+  kind      UnitKind @default(COUNT)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+  productsAsBase Product[]             @relation("ProductBaseUnit")
+  presentations  ProductPresentation[]
+
+  @@unique([tenantId, code])
+  @@map("units_of_measure")
+}
+
+model Product {
+  id         String          @id @default(uuid()) @db.Uuid
+  tenantId   String          @map("tenant_id") @db.Uuid
+  baseUnitId String          @map("base_unit_id") @db.Uuid
+  sku        String
+  name       String
+  modality   ProductModality @default(UNIT)
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id])
+  baseUnit           UnitOfMeasure                @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
+  presentations      ProductPresentation[]
+  inventoryBalances  InventoryBalance[]
+  inventoryMovements InventoryMovement[]
+  orderLines         OrderLine[]
+  allocationLines    AllocationLine[]
+  allocationBalances CustomerAllocationBalance[]
+  consumptionLines   ConsumptionLine[]
+  saleLines          SaleLine[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, active])
+  @@map("products")
+}
+
+model ProductPresentation {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  unitId       String   @map("unit_id") @db.Uuid
+  name         String
+  factorToBase Decimal  @map("factor_to_base") @db.Decimal(18, 6)
+  isDefault    Boolean  @default(false) @map("is_default")
+  barcode      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  product         Product          @relation(fields: [productId], references: [id])
+  unit            UnitOfMeasure    @relation(fields: [unitId], references: [id])
+  allocationLines AllocationLine[]
+
+  @@unique([tenantId, productId, name])
+  @@index([tenantId, productId])
+  @@map("product_presentations")
+}
+
+// ─── Warehouses & Inventory ───────────────────────────────────────────────────
+
+model Warehouse {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id])
+  inventoryBalances  InventoryBalance[]
+  inventoryMovements InventoryMovement[]
+  orders             Order[]
+  allocations        Allocation[]
+  allocationBalances CustomerAllocationBalance[]
+  consumptions       Consumption[]
+
+  @@unique([tenantId, code])
+  @@map("warehouses")
+}
+
+model InventoryBalance {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  warehouseId   String   @map("warehouse_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  quantityBase  Decimal  @default(0) @map("quantity_base") @db.Decimal(18, 6)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, warehouseId, productId])
+  @@map("inventory_balances")
+}
+
+model InventoryMovement {
+  id                 String                @id @default(uuid()) @db.Uuid
+  tenantId           String                @map("tenant_id") @db.Uuid
+  warehouseId        String                @map("warehouse_id") @db.Uuid
+  productId          String                @map("product_id") @db.Uuid
+  type               InventoryMovementType
+  /// Signed quantity in base units (positive = in, negative = out) OR always positive with type direction — we use signed
+  quantityBase       Decimal               @map("quantity_base") @db.Decimal(18, 6)
+  reversesMovementId String?               @map("reverses_movement_id") @db.Uuid
+  referenceId        String?               @map("reference_id") @db.Uuid
+  referenceType      String?               @map("reference_type")
+  notes              String?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  createdByUserId    String?               @map("created_by_user_id") @db.Uuid
+
+  tenant           Tenant             @relation(fields: [tenantId], references: [id])
+  warehouse        Warehouse          @relation(fields: [warehouseId], references: [id])
+  product          Product            @relation(fields: [productId], references: [id])
+  reversesMovement InventoryMovement? @relation("MovementReversal", fields: [reversesMovementId], references: [id])
+  reversedBy       InventoryMovement[] @relation("MovementReversal")
+
+  @@index([tenantId, warehouseId, productId, createdAt])
+  @@index([tenantId, referenceType, referenceId])
+  @@map("inventory_movements")
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  warehouseId String      @map("warehouse_id") @db.Uuid
+  number      String
+  status      OrderStatus @default(DRAFT)
+  notes       String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  warehouse Warehouse   @relation(fields: [warehouseId], references: [id])
+  lines     OrderLine[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("orders")
+}
+
+model OrderLine {
+  id           String  @id @default(uuid()) @db.Uuid
+  orderId      String  @map("order_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  quantityBase Decimal @map("quantity_base") @db.Decimal(18, 6)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@map("order_lines")
+}
+
+// ─── Allocations ──────────────────────────────────────────────────────────────
+
+model Allocation {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  customerId      String           @map("customer_id") @db.Uuid
+  warehouseId     String           @map("warehouse_id") @db.Uuid
+  createdByUserId String           @map("created_by_user_id") @db.Uuid
+  status          AllocationStatus @default(COMPLETED)
+  notes           String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  warehouse     Warehouse        @relation(fields: [warehouseId], references: [id])
+  createdByUser User             @relation("AllocationCreatedBy", fields: [createdByUserId], references: [id])
+  lines         AllocationLine[]
+
+  @@index([tenantId, customerId, createdAt])
+  @@map("allocations")
+}
+
+model AllocationLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  allocationId   String   @map("allocation_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  presentationId String?  @map("presentation_id") @db.Uuid
+  quantityBase   Decimal  @map("quantity_base") @db.Decimal(18, 6)
+
+  allocation   Allocation           @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id])
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id])
+
+  @@index([allocationId])
+  @@map("allocation_lines")
+}
+
+model CustomerAllocationBalance {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
+  customerId   String  @map("customer_id") @db.Uuid
+  warehouseId  String  @map("warehouse_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  quantityBase Decimal @default(0) @map("quantity_base") @db.Decimal(18, 6)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  customer  Customer  @relation(fields: [customerId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, customerId, warehouseId, productId])
+  @@map("customer_allocation_balances")
+}
+
+// ─── Consumptions ─────────────────────────────────────────────────────────────
+
+model Consumption {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  warehouseId     String   @map("warehouse_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  /// Unique per tenant — retries with same key return the same record
+  idempotencyKey  String   @map("idempotency_key")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  customer      Customer          @relation(fields: [customerId], references: [id])
+  warehouse     Warehouse         @relation(fields: [warehouseId], references: [id])
+  createdByUser User              @relation("ConsumptionCreatedBy", fields: [createdByUserId], references: [id])
+  lines         ConsumptionLine[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, customerId, createdAt])
+  @@map("consumptions")
+}
+
+model ConsumptionLine {
+  id            String  @id @default(uuid()) @db.Uuid
+  consumptionId String  @map("consumption_id") @db.Uuid
+  productId     String  @map("product_id") @db.Uuid
+  quantityBase  Decimal @map("quantity_base") @db.Decimal(18, 6)
+
+  consumption Consumption @relation(fields: [consumptionId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+
+  @@index([consumptionId])
+  @@map("consumption_lines")
+}
+
+// ─── Sales stubs (MVP) ────────────────────────────────────────────────────────
+
+model Sale {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  customerId  String?     @map("customer_id") @db.Uuid
+  trigger     SaleTrigger
+  status      SaleStatus  @default(PENDING)
+  totalAmount Decimal     @default(0) @map("total_amount") @db.Decimal(18, 2)
+  currency    String      @default("MXN")
+  referenceId String?     @map("reference_id") @db.Uuid
+  referenceType String?   @map("reference_type")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  customer Customer?  @relation(fields: [customerId], references: [id])
+  lines    SaleLine[]
+  payments Payment[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, referenceType, referenceId])
+  @@map("sales")
+}
+
+model SaleLine {
+  id           String  @id @default(uuid()) @db.Uuid
+  saleId       String  @map("sale_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  quantityBase Decimal @map("quantity_base") @db.Decimal(18, 6)
+  unitPrice    Decimal @map("unit_price") @db.Decimal(18, 2)
+  lineTotal    Decimal @map("line_total") @db.Decimal(18, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@map("sale_lines")
+}
+
+model Payment {
+  id        String        @id @default(uuid()) @db.Uuid
+  saleId    String        @map("sale_id") @db.Uuid
+  method    PaymentMethod @default(CASH)
+  amount    Decimal       @db.Decimal(18, 2)
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("payments")
+}
