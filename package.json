@@ -14,11 +14,19 @@
     "prisma:generate": "prisma generate --schema=database/prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema=database/prisma/schema.prisma",
     "prisma:deploy": "prisma migrate deploy --schema=database/prisma/schema.prisma",
+    "prisma:seed": "tsx database/prisma/seed.ts",
     "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "db:setup": "npm run prisma:generate && npm run prisma:deploy && npm run prisma:seed"
+  },
+  "prisma": {
+    "schema": "database/prisma/schema.prisma",
+    "seed": "tsx database/prisma/seed.ts"
   },
   "devDependencies": {
+    "bcrypt": "^5.1.1",
     "prisma": "^6.5.0",
+    "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   },
   "engines": {

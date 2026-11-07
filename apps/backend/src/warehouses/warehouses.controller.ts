@@ -1,0 +1,37 @@
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthUserContext } from '../common/types/auth-user';
+import { WarehousesService } from './warehouses.service';
+import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/warehouse.dto';
+
+@Controller('warehouses')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class WarehousesController {
+  constructor(private readonly warehouses: WarehousesService) {}
+
+  @Get()
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE)
+  list(@CurrentUser() user: AuthUserContext) {
+    return this.warehouses.list(user.tenantId);
+  }
+
+  @Post()
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
+  create(@CurrentUser() user: AuthUserContext, @Body() dto: CreateWarehouseDto) {
+    return this.warehouses.create(user.tenantId, dto);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
+  update(
+    @CurrentUser() user: AuthUserContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateWarehouseDto,
+  ) {
+    return this.warehouses.update(user.tenantId, id, dto);
+  }
+}

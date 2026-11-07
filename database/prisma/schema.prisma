@@ -121,6 +121,7 @@ model Tenant {
   customers                   Customer[]
   cards                       Card[]
   unitsOfMeasure              UnitOfMeasure[]
+  categories                  Category[]
   products                    Product[]
   productPresentations        ProductPresentation[]
   warehouses                  Warehouse[]
@@ -225,10 +226,28 @@ model UnitOfMeasure {
   @@map("units_of_measure")
 }
 
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  code      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("categories")
+}
+
 model Product {
   id         String          @id @default(uuid()) @db.Uuid
   tenantId   String          @map("tenant_id") @db.Uuid
   baseUnitId String          @map("base_unit_id") @db.Uuid
+  categoryId String?         @map("category_id") @db.Uuid
   sku        String
   name       String
   modality   ProductModality @default(UNIT)
@@ -238,6 +257,7 @@ model Product {
 
   tenant             Tenant                       @relation(fields: [tenantId], references: [id])
   baseUnit           UnitOfMeasure                @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
+  category           Category?                    @relation(fields: [categoryId], references: [id])
   presentations      ProductPresentation[]
   inventoryBalances  InventoryBalance[]
   inventoryMovements InventoryMovement[]
@@ -249,6 +269,7 @@ model Product {
 
   @@unique([tenantId, sku])
   @@index([tenantId, active])
+  @@index([tenantId, categoryId])
   @@map("products")
 }
 
@@ -412,13 +433,17 @@ model AllocationLine {
 }
 
 model CustomerAllocationBalance {
-  id           String  @id @default(uuid()) @db.Uuid
-  tenantId     String  @map("tenant_id") @db.Uuid
-  customerId   String  @map("customer_id") @db.Uuid
-  warehouseId  String  @map("warehouse_id") @db.Uuid
-  productId    String  @map("product_id") @db.Uuid
-  quantityBase Decimal @default(0) @map("quantity_base") @db.Decimal(18, 6)
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  customerId        String   @map("customer_id") @db.Uuid
+  warehouseId       String   @map("warehouse_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  /// Remaining = assigned - consumed - returned (unidad base)
+  quantityBase      Decimal  @default(0) @map("quantity_base") @db.Decimal(18, 6)
+  quantityAssigned  Decimal  @default(0) @map("quantity_assigned") @db.Decimal(18, 6)
+  quantityConsumed  Decimal  @default(0) @map("quantity_consumed") @db.Decimal(18, 6)
+  quantityReturned  Decimal  @default(0) @map("quantity_returned") @db.Decimal(18, 6)
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
   customer  Customer  @relation(fields: [customerId], references: [id])
