@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: liquor-control-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: liquor
+      POSTGRES_PASSWORD: liquor
+      POSTGRES_DB: liquor_control
+    ports:
+      - "5432:5432"
+    volumes:
+      - liquor_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U liquor -d liquor_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  liquor_pg_data:
