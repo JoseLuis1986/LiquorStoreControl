@@ -132,6 +132,32 @@ async function main() {
       },
     }));
 
+  const branchCentro =
+    (await prisma.branch.findUnique({
+      where: { tenantId_code: { tenantId: tenant.id, code: 'CENTRO' } },
+    })) ??
+    (await prisma.branch.create({
+      data: {
+        tenantId: tenant.id,
+        code: 'CENTRO',
+        name: 'Sucursal Centro',
+        address: 'Av. Principal 100',
+      },
+    }));
+
+  const branchNorte =
+    (await prisma.branch.findUnique({
+      where: { tenantId_code: { tenantId: tenant.id, code: 'NORTE' } },
+    })) ??
+    (await prisma.branch.create({
+      data: {
+        tenantId: tenant.id,
+        code: 'NORTE',
+        name: 'Sucursal Norte',
+        address: 'Blvd. Norte 50',
+      },
+    }));
+
   const warehouse =
     (await prisma.warehouse.findUnique({
       where: { tenantId_code: { tenantId: tenant.id, code: 'MAIN' } },
@@ -139,10 +165,52 @@ async function main() {
     (await prisma.warehouse.create({
       data: {
         tenantId: tenant.id,
+        branchId: branchCentro.id,
         code: 'MAIN',
         name: 'Almacén principal',
       },
     }));
+  if (!warehouse.branchId) {
+    await prisma.warehouse.update({
+      where: { id: warehouse.id },
+      data: { branchId: branchCentro.id },
+    });
+  }
+
+  const warehouseNorte =
+    (await prisma.warehouse.findUnique({
+      where: { tenantId_code: { tenantId: tenant.id, code: 'NORTE' } },
+    })) ??
+    (await prisma.warehouse.create({
+      data: {
+        tenantId: tenant.id,
+        branchId: branchNorte.id,
+        code: 'NORTE',
+        name: 'Almacén Norte',
+      },
+    }));
+
+  await prisma.user.update({
+    where: { id: admin.id },
+    data: { defaultBranchId: branchCentro.id },
+  });
+
+  await prisma.inventoryBalance.upsert({
+    where: {
+      tenantId_warehouseId_productId: {
+        tenantId: tenant.id,
+        warehouseId: warehouseNorte.id,
+        productId: product.id,
+      },
+    },
+    create: {
+      tenantId: tenant.id,
+      warehouseId: warehouseNorte.id,
+      productId: product.id,
+      quantityBase: 40,
+    },
+    update: {},
+  });
 
   await prisma.inventoryBalance.upsert({
     where: {
@@ -253,7 +321,8 @@ Seed OK
 ---------
 Tenant:   ${tenant.name} (${tenant.slug})
 Admin:    ${email} / ${password}
-Warehouse:${warehouse.code}
+Branches: ${branchCentro.code}, ${branchNorte.code}
+Warehouses:${warehouse.code} (CENTRO), ${warehouseNorte.code} (NORTE)
 Product:  ${product.sku} (minStock=100, price=450)
 Customer: ${customer.code} — ${customer.name}
 Supplier: ${supplier.code} — ${supplier.name}
