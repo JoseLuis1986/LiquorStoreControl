@@ -97,6 +97,40 @@ curl -s -X POST http://localhost:3000/api/v1/sales \
 - Comprobantes HTML imprimibles (`/receipts/sales|payments|returns/:id`)
 - UI: Compras, Caja/Ventas, Devoluciones
 
+### Fase 3 (administración)
+- Dashboard: existencias valorizadas, ventas del día, top productos, consumo, alertas de stock, movimientos
+- Reportes: inventario valorizado, más vendidos, consumo por cliente, compras/proveedores, rentabilidad, diferencias de inventario, estado de cuenta
+- Exportes Excel (ExcelJS) y PDF (PDFKit)
+- Auditoría de mutaciones (quién/qué/cuándo/contexto) + UI
+- Alertas `minStock` en producto + listado `/alerts/low-stock`
+- Permisos detallados por rol/tenant + overrides de usuario; guards en API
+- UI: Dashboard, Reportes, Auditoría, Usuarios/permisos
+
+## Cómo verificar Fase 3
+
+```bash
+npm run db:setup
+npm run dev:backend
+npm run dev:frontend
+```
+
+1. Login `admin@demo.local` / `Admin123!`
+2. **Dashboard**: existencias, ventas del día, alertas (seed pone `minStock=100` en JW-RED-750).
+3. **Reportes**: revisa tablas y descarga Excel/PDF de inventario y más vendidos; consulta estado de cuenta.
+4. **Auditoría**: tras crear una venta/compra, aparece el evento.
+5. **Usuarios**: crea un EMPLOYEE y ajusta la matriz de permisos del rol MANAGER.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@demo.local","password":"Admin123!"}' | jq -r .accessToken)
+
+curl -s http://localhost:3000/api/v1/dashboard/summary -H "Authorization: Bearer $TOKEN" | jq
+curl -s -OJ http://localhost:3000/api/v1/reports/export/inventory-valued.xlsx -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:3000/api/v1/alerts/low-stock -H "Authorization: Bearer $TOKEN" | jq
+curl -s http://localhost:3000/api/v1/audit-logs -H "Authorization: Bearer $TOKEN" | jq '.[0]'
+```
+
 ## Decisiones de alcance (confirmadas)
 
 1. Multi-tenant desde el modelo de datos.

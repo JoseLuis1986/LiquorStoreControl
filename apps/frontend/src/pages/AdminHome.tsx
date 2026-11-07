@@ -31,9 +31,9 @@ export function AdminHome() {
           </Alert>
         ) : null}
         <Alert severity="success">
-          Fase 1: Inventario → Clientes (QR) → POS (asignar/consumir) → Historial.
-          Fase 2: Compras (OC/recepción) → Caja/Ventas (pagos/CxC) → Devoluciones
-          (comprobantes).
+          Fase 1: Inventario → Clientes (QR) → POS → Historial. Fase 2: Compras →
+          Caja/Ventas → Devoluciones. Fase 3: Dashboard → Reportes/exportes →
+          Auditoría → Usuarios/permisos.
         </Alert>
       </Stack>
     </Paper>

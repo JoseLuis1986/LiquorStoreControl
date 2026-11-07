@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -19,6 +20,12 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { CashModule } from './cash/cash.module';
 import { ReturnsModule } from './returns/returns.module';
 import { ReceiptsModule } from './receipts/receipts.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { AuditModule } from './audit/audit.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
+import { AlertsModule } from './alerts/alerts.module';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
@@ -27,6 +34,8 @@ import { ReceiptsModule } from './receipts/receipts.module';
       envFilePath: ['.env', '../../.env'],
     }),
     PrismaModule,
+    PermissionsModule,
+    AuditModule,
     AuthModule,
     TenantsModule,
     UsersModule,
@@ -44,7 +53,16 @@ import { ReceiptsModule } from './receipts/receipts.module';
     CashModule,
     ReturnsModule,
     ReceiptsModule,
+    DashboardModule,
+    ReportsModule,
+    AlertsModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
+  ],
 })
 export class AppModule {}
