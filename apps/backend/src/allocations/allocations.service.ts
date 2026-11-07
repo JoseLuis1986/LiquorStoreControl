@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { toDecimal } from '../common/utils/decimal';
+import { resolveUnitPrice } from '../common/utils/pricing';
 import { CreateAllocationDto } from './dto/allocation.dto';
 
 @Injectable()
@@ -142,26 +143,49 @@ export class AllocationsService {
         void bal;
       }
 
-      // Cobro stub si billingModes incluye CHARGE_ON_ALLOCATION
+      // Cobro real si billingModes incluye CHARGE_ON_ALLOCATION
       const modes = (customer.billingModes as string[]) ?? [];
       if (modes.includes('CHARGE_ON_ALLOCATION')) {
+        const saleLines = [];
+        for (const l of resolvedLines) {
+          const unitPrice = await resolveUnitPrice(
+            tx,
+            tenantId,
+            l.productId,
+            customer.id,
+          );
+          saleLines.push({
+            productId: l.productId,
+            quantityBase: l.quantityBase,
+            unitPrice,
+            lineTotal: l.quantityBase.mul(unitPrice),
+          });
+        }
+        const totalAmount = saleLines.reduce(
+          (a, l) => a.add(l.lineTotal),
+          toDecimal(0),
+        );
+        const openCash = await tx.cashSession.findFirst({
+          where: {
+            tenantId,
+            warehouseId: dto.warehouseId,
+            status: 'OPEN',
+          },
+        });
         await tx.sale.create({
           data: {
             tenantId,
             customerId: customer.id,
+            warehouseId: dto.warehouseId,
+            cashSessionId: openCash?.id,
+            number: `C-${Date.now().toString(36).toUpperCase()}`,
             trigger: SaleTrigger.ALLOCATION,
             status: 'PENDING',
-            totalAmount: toDecimal(0),
+            totalAmount,
+            amountPaid: toDecimal(0),
             referenceType: 'ALLOCATION',
             referenceId: created.id,
-            lines: {
-              create: resolvedLines.map((l) => ({
-                productId: l.productId,
-                quantityBase: l.quantityBase,
-                unitPrice: toDecimal(0),
-                lineTotal: toDecimal(0),
-              })),
-            },
+            lines: { create: saleLines },
           },
         });
       }

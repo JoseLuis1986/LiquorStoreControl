@@ -83,6 +83,7 @@ async function main() {
         baseUnitId: bottle.id,
         categoryId: category.id,
         modality: 'CASE',
+        defaultUnitPrice: 450,
         presentations: {
           create: [
             {
@@ -103,7 +104,25 @@ async function main() {
         },
       },
     });
+  } else {
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { defaultUnitPrice: 450 },
+    });
   }
+
+  const supplier =
+    (await prisma.supplier.findUnique({
+      where: { tenantId_code: { tenantId: tenant.id, code: 'DIST-01' } },
+    })) ??
+    (await prisma.supplier.create({
+      data: {
+        tenantId: tenant.id,
+        code: 'DIST-01',
+        name: 'Distribuidora Norte',
+        phone: '555-0100',
+      },
+    }));
 
   const warehouse =
     (await prisma.warehouse.findUnique({
@@ -198,6 +217,8 @@ Admin:    ${email} / ${password}
 Warehouse:${warehouse.code}
 Product:  ${product.sku}
 Customer: ${customer.code} — ${customer.name}
+Supplier: ${supplier.code} — ${supplier.name}
+Price:    JW-RED-750 @ $450 / unidad base
 ${cardToken ? `Card token (guardar, solo se muestra al emitir/seed): ${cardToken}` : 'Card token: (ya existía; re-emite desde UI si lo necesitas)'}
 `);
 }

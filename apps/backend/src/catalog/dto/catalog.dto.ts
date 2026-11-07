@@ -51,6 +51,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsEnum(ProductModality)
   modality?: ProductModality;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultUnitPrice?: number;
 }
 
 export class UpdateProductDto {
@@ -69,6 +74,11 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultUnitPrice?: number;
 }
 
 export class CreatePresentationDto {

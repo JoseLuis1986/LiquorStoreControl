@@ -7,6 +7,7 @@ import {
 import { Prisma, SaleTrigger } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toDecimal } from '../common/utils/decimal';
+import { resolveUnitPrice } from '../common/utils/pricing';
 import { CreateConsumptionDto } from './dto/consumption.dto';
 
 @Injectable()
@@ -126,23 +127,47 @@ export class ConsumptionsService {
 
         const modes = (customer.billingModes as string[]) ?? [];
         if (modes.includes('CHARGE_ON_CONSUMPTION')) {
+          const saleLines = [];
+          for (const l of dto.lines) {
+            const qty = toDecimal(l.quantityBase);
+            const unitPrice = await resolveUnitPrice(
+              tx,
+              tenantId,
+              l.productId,
+              customer.id,
+            );
+            saleLines.push({
+              productId: l.productId,
+              quantityBase: qty,
+              unitPrice,
+              lineTotal: qty.mul(unitPrice),
+            });
+          }
+          const totalAmount = saleLines.reduce(
+            (a, l) => a.add(l.lineTotal),
+            toDecimal(0),
+          );
+          const openCash = await tx.cashSession.findFirst({
+            where: {
+              tenantId,
+              warehouseId: dto.warehouseId,
+              status: 'OPEN',
+            },
+          });
           await tx.sale.create({
             data: {
               tenantId,
               customerId: customer.id,
+              warehouseId: dto.warehouseId,
+              cashSessionId: openCash?.id,
+              number: `C-${Date.now().toString(36).toUpperCase()}`,
               trigger: SaleTrigger.CONSUMPTION,
               status: 'PENDING',
-              totalAmount: toDecimal(0),
+              totalAmount,
+              amountPaid: toDecimal(0),
               referenceType: 'CONSUMPTION',
               referenceId: created.id,
-              lines: {
-                create: dto.lines.map((l) => ({
-                  productId: l.productId,
-                  quantityBase: toDecimal(l.quantityBase),
-                  unitPrice: toDecimal(0),
-                  lineTotal: toDecimal(0),
-                })),
-              },
+              lines: { create: saleLines },
             },
           });
         }

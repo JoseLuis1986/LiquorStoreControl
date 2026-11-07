@@ -31,8 +31,9 @@ export function AdminHome() {
           </Alert>
         ) : null}
         <Alert severity="success">
-          Flujo happy path: Inventario → Clientes (emitir QR) → Terminal POS
-          (resolver → asignar → consumir) → Historial.
+          Fase 1: Inventario → Clientes (QR) → POS (asignar/consumir) → Historial.
+          Fase 2: Compras (OC/recepción) → Caja/Ventas (pagos/CxC) → Devoluciones
+          (comprobantes).
         </Alert>
       </Stack>
     </Paper>

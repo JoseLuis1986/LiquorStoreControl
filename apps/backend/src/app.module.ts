@@ -15,6 +15,10 @@ import { AllocationsModule } from './allocations/allocations.module';
 import { ConsumptionsModule } from './consumptions/consumptions.module';
 import { SalesModule } from './sales/sales.module';
 import { MeModule } from './me/me.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { CashModule } from './cash/cash.module';
+import { ReturnsModule } from './returns/returns.module';
+import { ReceiptsModule } from './receipts/receipts.module';
 
 @Module({
   imports: [
@@ -36,6 +40,10 @@ import { MeModule } from './me/me.module';
     ConsumptionsModule,
     SalesModule,
     MeModule,
+    SuppliersModule,
+    CashModule,
+    ReturnsModule,
+    ReceiptsModule,
   ],
   controllers: [HealthController],
 })
