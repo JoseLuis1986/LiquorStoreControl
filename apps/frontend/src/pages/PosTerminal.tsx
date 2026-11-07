@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,11 @@ import {
 } from '@mui/material';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useBranch } from '../context/BranchContext';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { enqueueOfflineOp } from '../offline/queue';
+import { attachKeyboardWedgeListener } from '../peripherals/scanner';
+import { getPrinterCapabilities } from '../peripherals/printer';
 
 type ResolveResult = {
   card: { id: string; status: string; label: string | null };
@@ -45,6 +50,8 @@ type Product = {
 
 export function PosTerminal() {
   const { token } = useAuth();
+  const { branchId, warehouseIds } = useBranch();
+  const online = useOnlineStatus();
   const [cardToken, setCardToken] = useState('');
   const [resolved, setResolved] = useState<ResolveResult | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -57,21 +64,37 @@ export function PosTerminal() {
   const [consumeProductId, setConsumeProductId] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tokenInputRef = useRef<HTMLInputElement>(null);
+  const printerCaps = getPrinterCapabilities();
 
   useEffect(() => {
     if (!token) return;
+    const q = branchId ? `?branchId=${branchId}` : '';
     Promise.all([
-      api<Warehouse[]>('/warehouses', { token }),
+      api<Warehouse[]>(`/warehouses${q}`, { token }),
       api<Product[]>('/products', { token }),
     ])
       .then(([w, p]) => {
-        setWarehouses(w);
+        const filtered =
+          warehouseIds.length > 0
+            ? w.filter((x) => warehouseIds.includes(x.id))
+            : w;
+        const list = filtered.length ? filtered : w;
+        setWarehouses(list);
         setProducts(p);
-        if (w[0]) setWarehouseId(w[0].id);
+        if (list[0]) setWarehouseId(list[0].id);
         if (p[0]) setProductId(p[0].id);
       })
       .catch((e) => setError(e.message));
-  }, [token]);
+  }, [token, branchId, warehouseIds.join(',')]);
+
+  useEffect(() => {
+    return attachKeyboardWedgeListener(document, (code) => {
+      setCardToken(code);
+      setMessage(`Escaneo wedge: ${code.slice(0, 12)}…`);
+      tokenInputRef.current?.focus();
+    });
+  }, []);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const presentations = selectedProduct?.presentations ?? [];
@@ -137,6 +160,32 @@ export function PosTerminal() {
     setError(null);
     setMessage(null);
     const idem = crypto.randomUUID();
+    const body = {
+      customerId: resolved.customer.id,
+      warehouseId,
+      lines: [
+        {
+          productId: consumeProductId,
+          quantityBase: Number(consumeQty),
+        },
+      ],
+    };
+
+    if (!online) {
+      await enqueueOfflineOp({
+        id: crypto.randomUUID(),
+        type: 'consumption',
+        path: '/consumptions',
+        method: 'POST',
+        body,
+        idempotencyKey: idem,
+      });
+      setMessage(
+        `Offline: consumo encolado (idem ${idem.slice(0, 8)}…). Se reenviará al reconectar.`,
+      );
+      return;
+    }
+
     try {
       const result = await api<{
         replay: boolean;
@@ -145,16 +194,7 @@ export function PosTerminal() {
         method: 'POST',
         token,
         idempotencyKey: idem,
-        body: JSON.stringify({
-          customerId: resolved.customer.id,
-          warehouseId,
-          lines: [
-            {
-              productId: consumeProductId,
-              quantityBase: Number(consumeQty),
-            },
-          ],
-        }),
+        body: JSON.stringify(body),
       });
       setMessage(
         result.replay
@@ -168,6 +208,18 @@ export function PosTerminal() {
       });
       setResolved(data);
     } catch (err) {
+      if (!navigator.onLine) {
+        await enqueueOfflineOp({
+          id: crypto.randomUUID(),
+          type: 'consumption',
+          path: '/consumptions',
+          method: 'POST',
+          body,
+          idempotencyKey: idem,
+        });
+        setMessage('Red caída: consumo encolado para replay idempotente.');
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Error');
     }
   }
@@ -179,15 +231,23 @@ export function PosTerminal() {
           Terminal POS / escaneo
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Escanea o pega el token de la tarjeta (sin PII). Luego asigna o registra
-          consumo sobre el saldo asignado.
+          Escanea (keyboard wedge) o pega el token de la tarjeta (sin PII). Luego
+          asigna o registra consumo. Offline: los consumos se encolan con
+          Idempotency-Key. Impresión: {printerCaps.browserPrint ? 'navegador' : 'n/d'}
+          {printerCaps.webSerial ? ' + Web Serial' : ''}.
         </Typography>
+        {!online ? (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Modo offline — los consumos quedan en cola local hasta reconectar.
+          </Alert>
+        ) : null}
         <form onSubmit={onResolve}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               label="Token de tarjeta"
               value={cardToken}
               onChange={(e) => setCardToken(e.target.value)}
+              inputRef={tokenInputRef}
               fullWidth
               autoFocus
               required

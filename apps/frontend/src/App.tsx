@@ -13,7 +13,10 @@ import {
   useLocation,
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import { BranchProvider } from './context/BranchContext';
+import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { AdminHome } from './pages/AdminHome';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AuditPage } from './pages/AuditPage';
 import { CashSalesPage } from './pages/CashSalesPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -26,6 +29,7 @@ import { ProductsPage } from './pages/ProductsPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ReturnsPage } from './pages/ReturnsPage';
+import { TransfersPage } from './pages/TransfersPage';
 import { UsersPage } from './pages/UsersPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -52,63 +56,72 @@ function Shell() {
     >
       <Container maxWidth="lg" sx={{ py: 4 }}>
         {!isLogin ? (
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            justifyContent="space-between"
-            alignItems={{ xs: 'flex-start', sm: 'center' }}
-            spacing={2}
-            sx={{ mb: 4 }}
-          >
-            <Typography variant="h3" component="h1" color="primary">
-              LiquorControl
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Button component={RouterLink} to="/" size="small">
-                Inicio
-              </Button>
-              <Button component={RouterLink} to="/dashboard" size="small" variant="contained">
-                Dashboard
-              </Button>
-              <Button component={RouterLink} to="/reports" size="small">
-                Reportes
-              </Button>
-              <Button component={RouterLink} to="/audit" size="small">
-                Auditoría
-              </Button>
-              <Button component={RouterLink} to="/users" size="small">
-                Usuarios
-              </Button>
-              <Button component={RouterLink} to="/products" size="small">
-                Productos
-              </Button>
-              <Button component={RouterLink} to="/customers" size="small">
-                Clientes
-              </Button>
-              <Button component={RouterLink} to="/inventory" size="small">
-                Inventario
-              </Button>
-              <Button component={RouterLink} to="/purchases" size="small">
-                Compras
-              </Button>
-              <Button component={RouterLink} to="/cash" size="small">
-                Caja/Ventas
-              </Button>
-              <Button component={RouterLink} to="/returns" size="small">
-                Devoluciones
-              </Button>
-              <Button component={RouterLink} to="/pos" size="small" variant="contained">
-                Terminal POS
-              </Button>
-              <Button component={RouterLink} to="/history" size="small">
-                Historial
-              </Button>
-              {session ? (
-                <Button size="small" color="inherit" onClick={logout}>
-                  Salir
+          <>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              spacing={2}
+              sx={{ mb: 2 }}
+            >
+              <Typography variant="h3" component="h1" color="primary">
+                LiquorControl
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button component={RouterLink} to="/" size="small">
+                  Inicio
                 </Button>
-              ) : null}
+                <Button component={RouterLink} to="/dashboard" size="small" variant="contained">
+                  Dashboard
+                </Button>
+                <Button component={RouterLink} to="/analytics" size="small">
+                  Analítica
+                </Button>
+                <Button component={RouterLink} to="/reports" size="small">
+                  Reportes
+                </Button>
+                <Button component={RouterLink} to="/audit" size="small">
+                  Auditoría
+                </Button>
+                <Button component={RouterLink} to="/users" size="small">
+                  Usuarios
+                </Button>
+                <Button component={RouterLink} to="/products" size="small">
+                  Productos
+                </Button>
+                <Button component={RouterLink} to="/customers" size="small">
+                  Clientes
+                </Button>
+                <Button component={RouterLink} to="/inventory" size="small">
+                  Inventario
+                </Button>
+                <Button component={RouterLink} to="/transfers" size="small">
+                  Transferencias
+                </Button>
+                <Button component={RouterLink} to="/purchases" size="small">
+                  Compras
+                </Button>
+                <Button component={RouterLink} to="/cash" size="small">
+                  Caja/Ventas
+                </Button>
+                <Button component={RouterLink} to="/returns" size="small">
+                  Devoluciones
+                </Button>
+                <Button component={RouterLink} to="/pos" size="small" variant="contained">
+                  Terminal POS
+                </Button>
+                <Button component={RouterLink} to="/history" size="small">
+                  Historial
+                </Button>
+                {session ? (
+                  <Button size="small" color="inherit" onClick={logout}>
+                    Salir
+                  </Button>
+                ) : null}
+              </Stack>
             </Stack>
-          </Stack>
+            {session ? <ConnectionStatusBar /> : null}
+          </>
         ) : (
           <Typography
             variant="h3"
@@ -135,6 +148,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <RequireAuth>
+                <AnalyticsPage />
               </RequireAuth>
             }
           />
@@ -183,6 +204,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <InventoryPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/transfers"
+            element={
+              <RequireAuth>
+                <TransfersPage />
               </RequireAuth>
             }
           />
@@ -236,7 +265,9 @@ function Shell() {
 export function App() {
   return (
     <AuthProvider>
-      <Shell />
+      <BranchProvider>
+        <Shell />
+      </BranchProvider>
     </AuthProvider>
   );
 }

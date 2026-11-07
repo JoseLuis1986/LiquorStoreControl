@@ -131,12 +131,65 @@ curl -s http://localhost:3000/api/v1/alerts/low-stock -H "Authorization: Bearer 
 curl -s http://localhost:3000/api/v1/audit-logs -H "Authorization: Bearer $TOKEN" | jq '.[0]'
 ```
 
+### Fase 4 (escalabilidad)
+- Multi-sucursal: `Branch` + `Warehouse.branchId`, transferencias `StockTransfer` (`TRANSFER_IN`/`TRANSFER_OUT`)
+- Realtime Socket.IO en `/realtime` (stock bajo, consumos, ventas/caja, transferencias)
+- Offline controlado: cola IndexedDB/localStorage con `Idempotency-Key` y replay al reconectar
+- Periféricos: hooks de impresión (browser + Web Serial ESC/POS) y scanner keyboard-wedge / WebUSB stub
+- Analítica: `/analytics/trends` (serie ventas/consumo + rotación) y UI `/analytics`
+- PWA: manifest + service worker (`vite-plugin-pwa`), UI móvil-first del POS
+
+## Cómo verificar Fase 4
+
+```bash
+npm run db:setup
+npm run dev:backend
+npm run dev:frontend
+```
+
+1. Login `admin@demo.local` / `Admin123!` — selector de sucursal (CENTRO / NORTE) en la barra superior.
+2. Chips **Online** / **Realtime**: abre DevTools → Network → WS hacia `/realtime`.
+3. **Transferencias**: mueve stock MAIN → NORTE y verifica saldos + evento `transfer.completed`.
+4. **Analítica**: tendencias 7/14/30 días filtradas por sucursal.
+5. **Offline POS**: DevTools → Network → Offline → Consumir en POS → aparece chip “Pendientes”; vuelve Online → replay idempotente.
+6. **PWA**: en Chrome (móvil o desktop) Instalar aplicación / Add to Home Screen desde `/pos`.
+7. **Periféricos**: Caja/Ventas → Imprimir abre diálogo de impresión; scanner USB en modo teclado escribe el token y Enter.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@demo.local","password":"Admin123!"}' | jq -r .accessToken)
+
+curl -s http://localhost:3000/api/v1/branches -H "Authorization: Bearer $TOKEN" | jq
+curl -s 'http://localhost:3000/api/v1/analytics/trends?days=14' -H "Authorization: Bearer $TOKEN" | jq '.totals'
+
+# Transferencia MAIN → NORTE (sustituye IDs del listado /warehouses y /products)
+curl -s -X POST http://localhost:3000/api/v1/transfers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"fromWarehouseId":"…","toWarehouseId":"…","lines":[{"productId":"…","quantityBase":2}]}' | jq
+# luego POST /transfers/:id/complete
+```
+
+Socket smoke (Node):
+
+```bash
+node -e "
+const { io } = require('socket.io-client');
+const token = process.env.TOKEN;
+const s = io('http://localhost:3000/realtime', { auth: { token } });
+s.on('connect', () => console.log('ws ok'));
+s.on('realtime.ready', (p) => { console.log(p); process.exit(0); });
+s.on('connect_error', (e) => { console.error(e); process.exit(1); });
+setTimeout(() => process.exit(1), 5000);
+"
+```
+
 ## Decisiones de alcance (confirmadas)
 
 1. Multi-tenant desde el modelo de datos.
 2. Cobro configurable por cliente: al asignar y/o al consumir.
 3. Empleados operan el escaneo; clientes consultan su consumo (`/me/*`).
-4. Web responsive primero (sin app móvil ni escritorio en v1).
+4. Web responsive primero (sin app móvil nativa ni escritorio en v1; “móvil” = PWA instalable).
 
 ## Scripts útiles
 

@@ -16,7 +16,10 @@
     "@mui/material": "^6.4.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.4.0"
+    "react-router-dom": "^7.4.0",
+    "socket.io-client": "^4.8.4",
+    "vite-plugin-pwa": "^2.0.0",
+    "workbox-window": "^7.4.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.12",

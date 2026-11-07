@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { toDecimal } from '../common/utils/decimal';
 import { resolveUnitPrice, saleStatusFromPaid } from '../common/utils/pricing';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   CreateManualSaleDto,
   RecordPaymentDto,
@@ -24,6 +25,7 @@ export class SalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   list(tenantId: string, opts: { status?: string; arOnly?: boolean } = {}) {
@@ -161,7 +163,22 @@ export class SalesService {
       return created.id;
     });
 
-    return this.get(tenantId, sale);
+    const result = await this.get(tenantId, sale);
+    this.realtime.emitToTenant(tenantId, 'sale.created', {
+      id: result.id,
+      number: result.number,
+      warehouseId: result.warehouseId,
+      totalAmount: result.totalAmount.toString(),
+      status: result.status,
+    });
+    if (deductStock) {
+      this.realtime.emitToTenant(tenantId, 'inventory.changed', {
+        reason: 'sale',
+        saleId: result.id,
+      });
+      await this.emitLowStockIfNeeded(tenantId, dto.warehouseId);
+    }
+    return result;
   }
 
   async recordPayment(
@@ -181,7 +198,14 @@ export class SalesService {
         notes: dto.notes,
       });
     });
-    return this.get(tenantId, saleId);
+    const updated = await this.get(tenantId, saleId);
+    this.realtime.emitToTenant(tenantId, 'sale.payment', {
+      id: updated.id,
+      number: updated.number,
+      status: updated.status,
+      amountPaid: updated.amountPaid.toString(),
+    });
+    return updated;
   }
 
   private async applyPaymentTx(
@@ -318,5 +342,29 @@ export class SalesService {
       },
       include: { product: true, customer: true },
     });
+  }
+
+  private async emitLowStockIfNeeded(tenantId: string, warehouseId: string) {
+    const balances = await this.prisma.inventoryBalance.findMany({
+      where: { tenantId, warehouseId },
+      include: { product: true, warehouse: true },
+    });
+    const alerts = balances
+      .filter((b) => {
+        const min = toDecimal(b.product.minStock);
+        return min.gt(0) && toDecimal(b.quantityBase).lte(min);
+      })
+      .map((b) => ({
+        productId: b.productId,
+        sku: b.product.sku,
+        name: b.product.name,
+        warehouseId: b.warehouseId,
+        warehouseCode: b.warehouse.code,
+        quantityBase: b.quantityBase.toString(),
+        minStock: b.product.minStock.toString(),
+      }));
+    if (alerts.length) {
+      this.realtime.emitToTenant(tenantId, 'stock.low', { alerts });
+    }
   }
 }

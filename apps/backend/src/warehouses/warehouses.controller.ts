@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -15,8 +24,11 @@ export class WarehousesController {
 
   @Get()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.EMPLOYEE)
-  list(@CurrentUser() user: AuthUserContext) {
-    return this.warehouses.list(user.tenantId);
+  list(
+    @CurrentUser() user: AuthUserContext,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.warehouses.list(user.tenantId, branchId);
   }
 
   @Post()
