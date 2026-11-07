@@ -8,11 +8,15 @@ import { Prisma, SaleTrigger } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toDecimal } from '../common/utils/decimal';
 import { resolveUnitPrice } from '../common/utils/pricing';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateConsumptionDto } from './dto/consumption.dto';
 
 @Injectable()
 export class ConsumptionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   list(
     tenantId: string,
@@ -173,6 +177,17 @@ export class ConsumptionsService {
         }
 
         return created;
+      });
+
+      this.realtime.emitToTenant(tenantId, 'consumption.created', {
+        id: consumption.id,
+        customerId: consumption.customerId,
+        warehouseId: consumption.warehouseId,
+        lines: consumption.lines.map((l) => ({
+          productId: l.productId,
+          sku: l.product.sku,
+          quantityBase: l.quantityBase.toString(),
+        })),
       });
 
       return { replay: false, consumption };

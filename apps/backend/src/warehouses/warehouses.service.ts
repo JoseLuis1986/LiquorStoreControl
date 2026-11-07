@@ -10,9 +10,13 @@ import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/warehouse.dto';
 export class WarehousesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(tenantId: string) {
+  list(tenantId: string, branchId?: string) {
     return this.prisma.warehouse.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(branchId ? { branchId } : {}),
+      },
+      include: { branch: true },
       orderBy: { code: 'asc' },
     });
   }
@@ -20,7 +24,13 @@ export class WarehousesService {
   async create(tenantId: string, dto: CreateWarehouseDto) {
     try {
       return await this.prisma.warehouse.create({
-        data: { tenantId, code: dto.code, name: dto.name },
+        data: {
+          tenantId,
+          code: dto.code,
+          name: dto.name,
+          branchId: dto.branchId,
+        },
+        include: { branch: true },
       });
     } catch {
       throw new ConflictException('Código de almacén duplicado');

@@ -25,6 +25,10 @@ import { AuditModule } from './audit/audit.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { BranchesModule } from './branches/branches.module';
+import { TransfersModule } from './transfers/transfers.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
@@ -37,13 +41,16 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PermissionsModule,
     AuditModule,
     AuthModule,
+    RealtimeModule,
     TenantsModule,
     UsersModule,
     CustomersModule,
     CardsModule,
     CatalogModule,
     WarehousesModule,
+    BranchesModule,
     InventoryModule,
+    TransfersModule,
     OrdersModule,
     AllocationsModule,
     ConsumptionsModule,
@@ -56,6 +63,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     DashboardModule,
     ReportsModule,
     AlertsModule,
+    AnalyticsModule,
   ],
   controllers: [HealthController],
   providers: [
