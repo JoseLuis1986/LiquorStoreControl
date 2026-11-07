@@ -14,12 +14,15 @@ import {
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AdminHome } from './pages/AdminHome';
+import { CashSalesPage } from './pages/CashSalesPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { LoginPage } from './pages/LoginPage';
 import { PosTerminal } from './pages/PosTerminal';
 import { ProductsPage } from './pages/ProductsPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { ReturnsPage } from './pages/ReturnsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
@@ -67,6 +70,15 @@ function Shell() {
               </Button>
               <Button component={RouterLink} to="/inventory" size="small">
                 Inventario
+              </Button>
+              <Button component={RouterLink} to="/purchases" size="small">
+                Compras
+              </Button>
+              <Button component={RouterLink} to="/cash" size="small">
+                Caja/Ventas
+              </Button>
+              <Button component={RouterLink} to="/returns" size="small">
+                Devoluciones
               </Button>
               <Button component={RouterLink} to="/pos" size="small" variant="contained">
                 Terminal POS
@@ -123,6 +135,30 @@ function Shell() {
             element={
               <RequireAuth>
                 <InventoryPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/purchases"
+            element={
+              <RequireAuth>
+                <PurchasesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/cash"
+            element={
+              <RequireAuth>
+                <CashSalesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/returns"
+            element={
+              <RequireAuth>
+                <ReturnsPage />
               </RequireAuth>
             }
           />

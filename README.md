@@ -1,6 +1,6 @@
 # LiquorControl
 
-SaaS multiempresa para licorerías: inventario en unidad base decimal, clientes con tarjeta QR, asignaciones, consumo y cobro configurable (al asignar y/ o al consumir).
+SaaS multiempresa para licorerías: inventario en unidad base decimal, clientes con tarjeta QR, asignaciones, consumo y cobro configurable (al asignar y / o al consumir).
 
 Plataforma v1: **web responsive** (admin + terminal POS/escaneo).
 
@@ -32,7 +32,7 @@ npm run db:up          # Docker Compose
 # 3. Dependencias
 npm install
 
-# 4. Prisma + seed (tenant demo + admin + producto + tarjeta)
+# 4. Prisma + seed (tenant demo + admin + producto + tarjeta + proveedor)
 npm run db:setup
 
 # 5. Apps (dos terminales)
@@ -47,51 +47,55 @@ npm run dev:frontend   # http://localhost:5173
 | Email | `admin@demo.local` |
 | Password | `Admin123!` |
 | Tenant | `demo-licoreria` |
+| Producto | `JW-RED-750` @ $450 / unidad base |
+| Proveedor | `DIST-01` Distribuidora Norte |
 
 El seed imprime el **token de tarjeta** QR (solo al emitir/seed; no se persiste en claro).
 
-## Happy path: tarjeta → consumo
+## Happy path Fase 1: tarjeta → consumo
 
 1. Login en http://localhost:5173 con `admin@demo.local` / `Admin123!`.
-2. **Inventario**: verifica saldo del producto seed (o registra una entrada).
-3. **Clientes**: emite/copia el token QR del cliente `CLI-001` (o usa el token del seed).
-4. **Terminal POS**:
-   - Pega el token → **Resolver** (rechaza tarjeta bloqueada).
-   - **Asignar** cajas/unidades → descuenta inventario general y sube saldo asignado.
-   - **Consumir** con cantidad ≤ restante → descuenta solo el saldo asignado (idempotency-key automática).
-5. **Historial**: revisa consumos y movimientos inmutables.
+2. **Inventario** / seed: verifica saldo del producto.
+3. **Clientes**: emite/copia el token QR del cliente `CLI-001`.
+4. **Terminal POS**: Resolver → Asignar → Consumir.
+5. **Historial**: consumos y movimientos inmutables.
 
-### API equivalente (curl)
+## Happy path Fase 2: compra → venta/caja → devolución
+
+1. **Compras**: crea/usa proveedor → OC con costo → Confirmar → **Recibir** (genera `PURCHASE_IN` inmutable).
+2. **Caja/Ventas**: Abrir caja (fondo inicial) → venta de mostrador con pago efectivo/tarjeta/transferencia (o dejar CxC).
+3. Abona cuentas por cobrar desde la misma pantalla; abre **comprobante HTML** imprimible.
+4. **Devoluciones**: tipo asignación o venta → reintegra saldo/existencias con movimientos de reversión (no edita históricos) → comprobante.
 
 ```bash
-# Login
 TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@demo.local","password":"Admin123!"}' | jq -r .accessToken)
 
-# Resolver tarjeta
-curl -s -X POST http://localhost:3000/api/v1/cards/resolve \
+# Abrir caja
+curl -s -X POST http://localhost:3000/api/v1/cash-sessions/open \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"token\":\"$CARD_TOKEN\"}" | jq
+  -d '{"warehouseId":"…","openingFloat":500}' | jq
 
-# Consumo (Idempotency-Key obligatorio)
-curl -s -X POST http://localhost:3000/api/v1/consumptions \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H 'Content-Type: application/json' \
-  -d '{"customerId":"...","warehouseId":"...","lines":[{"productId":"...","quantityBase":1}]}' | jq
+# Venta + pago
+curl -s -X POST http://localhost:3000/api/v1/sales \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"warehouseId":"…","lines":[{"productId":"…","quantityBase":1}],"paymentMethod":"CASH","paymentAmount":450}' | jq
 ```
 
-## Módulos MVP
+## Módulos
 
-- Auth JWT (access + refresh) + roles por tenant
-- Productos, categorías, unidades, presentaciones/conversiones
-- Inventario: balances, entradas, movimientos append-only + reversiones
-- Clientes + tarjetas QR (emitir / bloquear / reponer; token hasheado sin PII)
-- Asignaciones: `assigned − consumed − returned`; stock baja al asignar
-- Consumos transaccionales con `Idempotency-Key`
-- Sales stubs según `billingModes` del cliente
-- UI: login, productos, clientes/tarjetas, inventario, POS, historial
+### Fase 1 (MVP)
+- Auth JWT + roles/tenant, catálogo, inventario, clientes/QR, asignaciones, consumos idempotentes
+
+### Fase 2 (operación comercial)
+- Proveedores + órdenes de compra / recepción
+- Caja (apertura/cierre), ventas, pagos (efectivo/tarjeta/transferencia)
+- Cuentas por cobrar (abonos, saldos `PENDING`/`PARTIAL`)
+- Precios por producto + lista por cliente
+- Devoluciones (asignación/venta) con reversiones inmutables
+- Comprobantes HTML imprimibles (`/receipts/sales|payments|returns/:id`)
+- UI: Compras, Caja/Ventas, Devoluciones
 
 ## Decisiones de alcance (confirmadas)
 

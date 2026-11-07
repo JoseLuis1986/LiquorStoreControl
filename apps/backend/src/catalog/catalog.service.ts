@@ -98,6 +98,7 @@ export class CatalogService {
           baseUnitId: dto.baseUnitId,
           categoryId: dto.categoryId,
           modality: dto.modality ?? 'UNIT',
+          defaultUnitPrice: toDecimal(dto.defaultUnitPrice ?? 0),
         },
       });
       // Presentación 1:1 por defecto
@@ -126,6 +127,9 @@ export class CatalogService {
         categoryId: dto.categoryId === undefined ? undefined : dto.categoryId,
         modality: dto.modality,
         active: dto.active,
+        ...(dto.defaultUnitPrice != null
+          ? { defaultUnitPrice: toDecimal(dto.defaultUnitPrice) }
+          : {}),
       },
     });
     return this.getProduct(tenantId, id);

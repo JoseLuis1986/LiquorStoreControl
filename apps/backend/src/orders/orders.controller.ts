@@ -25,6 +25,12 @@ export class OrdersController {
     return this.orders.create(user.tenantId, dto);
   }
 
+  @Post(':id/confirm')
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
+  confirm(@CurrentUser() user: AuthUserContext, @Param('id') id: string) {
+    return this.orders.confirm(user.tenantId, id);
+  }
+
   @Post(':id/receive')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   receive(@CurrentUser() user: AuthUserContext, @Param('id') id: string) {

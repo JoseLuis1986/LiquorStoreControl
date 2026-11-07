@@ -107,6 +107,21 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReturnType {
+  ALLOCATION
+  SALE
+}
+
+enum ReturnStatus {
+  COMPLETED
+  CANCELLED
+}
+
 // ─── Tenant & Auth ────────────────────────────────────────────────────────────
 
 model Tenant {
@@ -132,6 +147,10 @@ model Tenant {
   customerAllocationBalances  CustomerAllocationBalance[]
   consumptions                Consumption[]
   sales                       Sale[]
+  suppliers                   Supplier[]
+  cashSessions                CashSession[]
+  returns                     StockReturn[]
+  customerPrices              CustomerPrice[]
 
   @@map("tenants")
 }
@@ -152,6 +171,10 @@ model User {
   customer     Customer?  @relation(fields: [customerId], references: [id])
   allocations  Allocation[]  @relation("AllocationCreatedBy")
   consumptions Consumption[] @relation("ConsumptionCreatedBy")
+  cashSessionsOpened CashSession[] @relation("CashSessionOpenedBy")
+  cashSessionsClosed CashSession[] @relation("CashSessionClosedBy")
+  returns            StockReturn[] @relation("ReturnCreatedBy")
+  payments           Payment[]     @relation("PaymentRecordedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -180,6 +203,8 @@ model Customer {
   allocationBalances  CustomerAllocationBalance[]
   consumptions        Consumption[]
   sales               Sale[]
+  returns             StockReturn[]
+  prices              CustomerPrice[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -244,16 +269,18 @@ model Category {
 }
 
 model Product {
-  id         String          @id @default(uuid()) @db.Uuid
-  tenantId   String          @map("tenant_id") @db.Uuid
-  baseUnitId String          @map("base_unit_id") @db.Uuid
-  categoryId String?         @map("category_id") @db.Uuid
-  sku        String
-  name       String
-  modality   ProductModality @default(UNIT)
-  active     Boolean         @default(true)
-  createdAt  DateTime        @default(now()) @map("created_at")
-  updatedAt  DateTime        @updatedAt @map("updated_at")
+  id               String          @id @default(uuid()) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  baseUnitId       String          @map("base_unit_id") @db.Uuid
+  categoryId       String?         @map("category_id") @db.Uuid
+  sku              String
+  name             String
+  modality         ProductModality @default(UNIT)
+  active           Boolean         @default(true)
+  /// Precio de venta por unidad base (MXN). Listas por cliente pueden sobreescribir.
+  defaultUnitPrice Decimal         @default(0) @map("default_unit_price") @db.Decimal(18, 2)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
 
   tenant             Tenant                       @relation(fields: [tenantId], references: [id])
   baseUnit           UnitOfMeasure                @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
@@ -266,11 +293,30 @@ model Product {
   allocationBalances CustomerAllocationBalance[]
   consumptionLines   ConsumptionLine[]
   saleLines          SaleLine[]
+  returnLines        StockReturnLine[]
+  customerPrices     CustomerPrice[]
 
   @@unique([tenantId, sku])
   @@index([tenantId, active])
   @@index([tenantId, categoryId])
   @@map("products")
+}
+
+model CustomerPrice {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  unitPrice  Decimal  @map("unit_price") @db.Decimal(18, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, customerId, productId])
+  @@map("customer_prices")
 }
 
 model ProductPresentation {
@@ -313,6 +359,9 @@ model Warehouse {
   allocations        Allocation[]
   allocationBalances CustomerAllocationBalance[]
   consumptions       Consumption[]
+  cashSessions       CashSession[]
+  returns            StockReturn[]
+  sales              Sale[]
 
   @@unique([tenantId, code])
   @@map("warehouses")
@@ -360,20 +409,44 @@ model InventoryMovement {
   @@map("inventory_movements")
 }
 
-// ─── Orders ───────────────────────────────────────────────────────────────────
+// ─── Suppliers & Purchase Orders ──────────────────────────────────────────────
+
+model Supplier {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String
+  name      String
+  email     String?
+  phone     String?
+  taxId     String?  @map("tax_id")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  orders Order[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("suppliers")
+}
 
 model Order {
-  id          String      @id @default(uuid()) @db.Uuid
-  tenantId    String      @map("tenant_id") @db.Uuid
-  warehouseId String      @map("warehouse_id") @db.Uuid
-  number      String
-  status      OrderStatus @default(DRAFT)
-  notes       String?
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  warehouseId  String      @map("warehouse_id") @db.Uuid
+  supplierId   String?     @map("supplier_id") @db.Uuid
+  number       String
+  status       OrderStatus @default(DRAFT)
+  notes        String?
+  totalAmount  Decimal     @default(0) @map("total_amount") @db.Decimal(18, 2)
+  receivedAt   DateTime?   @map("received_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   tenant    Tenant      @relation(fields: [tenantId], references: [id])
   warehouse Warehouse   @relation(fields: [warehouseId], references: [id])
+  supplier  Supplier?   @relation(fields: [supplierId], references: [id])
   lines     OrderLine[]
 
   @@unique([tenantId, number])
@@ -386,12 +459,41 @@ model OrderLine {
   orderId      String  @map("order_id") @db.Uuid
   productId    String  @map("product_id") @db.Uuid
   quantityBase Decimal @map("quantity_base") @db.Decimal(18, 6)
+  unitCost     Decimal @default(0) @map("unit_cost") @db.Decimal(18, 2)
+  lineTotal    Decimal @default(0) @map("line_total") @db.Decimal(18, 2)
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
   @@map("order_lines")
+}
+
+// ─── Cash register (caja) ─────────────────────────────────────────────────────
+
+model CashSession {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  warehouseId     String           @map("warehouse_id") @db.Uuid
+  openedByUserId  String           @map("opened_by_user_id") @db.Uuid
+  closedByUserId  String?          @map("closed_by_user_id") @db.Uuid
+  status          CashSessionStatus @default(OPEN)
+  openingFloat    Decimal          @default(0) @map("opening_float") @db.Decimal(18, 2)
+  closingAmount   Decimal?         @map("closing_amount") @db.Decimal(18, 2)
+  expectedCash    Decimal?         @map("expected_cash") @db.Decimal(18, 2)
+  notes           String?
+  openedAt        DateTime         @default(now()) @map("opened_at")
+  closedAt        DateTime?        @map("closed_at")
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id])
+  openedByUser User     @relation("CashSessionOpenedBy", fields: [openedByUserId], references: [id])
+  closedByUser User?    @relation("CashSessionClosedBy", fields: [closedByUserId], references: [id])
+  sales        Sale[]
+  payments     Payment[]
+
+  @@index([tenantId, status, openedAt])
+  @@map("cash_sessions")
 }
 
 // ─── Allocations ──────────────────────────────────────────────────────────────
@@ -491,28 +593,36 @@ model ConsumptionLine {
   @@map("consumption_lines")
 }
 
-// ─── Sales stubs (MVP) ────────────────────────────────────────────────────────
+// ─── Sales, payments & AR ─────────────────────────────────────────────────────
 
 model Sale {
-  id          String      @id @default(uuid()) @db.Uuid
-  tenantId    String      @map("tenant_id") @db.Uuid
-  customerId  String?     @map("customer_id") @db.Uuid
-  trigger     SaleTrigger
-  status      SaleStatus  @default(PENDING)
-  totalAmount Decimal     @default(0) @map("total_amount") @db.Decimal(18, 2)
-  currency    String      @default("MXN")
-  referenceId String?     @map("reference_id") @db.Uuid
-  referenceType String?   @map("reference_type")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  customerId    String?     @map("customer_id") @db.Uuid
+  warehouseId   String?     @map("warehouse_id") @db.Uuid
+  cashSessionId String?     @map("cash_session_id") @db.Uuid
+  number        String?
+  trigger       SaleTrigger
+  status        SaleStatus  @default(PENDING)
+  totalAmount   Decimal     @default(0) @map("total_amount") @db.Decimal(18, 2)
+  amountPaid    Decimal     @default(0) @map("amount_paid") @db.Decimal(18, 2)
+  currency      String      @default("MXN")
+  referenceId   String?     @map("reference_id") @db.Uuid
+  referenceType String?     @map("reference_type")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
 
-  tenant   Tenant     @relation(fields: [tenantId], references: [id])
-  customer Customer?  @relation(fields: [customerId], references: [id])
-  lines    SaleLine[]
-  payments Payment[]
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  lines       SaleLine[]
+  payments    Payment[]
+  returns     StockReturn[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, referenceType, referenceId])
+  @@unique([tenantId, number])
   @@map("sales")
 }
 
@@ -532,15 +642,65 @@ model SaleLine {
 }
 
 model Payment {
-  id        String        @id @default(uuid()) @db.Uuid
-  saleId    String        @map("sale_id") @db.Uuid
-  method    PaymentMethod @default(CASH)
-  amount    Decimal       @db.Decimal(18, 2)
-  status    PaymentStatus @default(PENDING)
-  createdAt DateTime      @default(now()) @map("created_at")
+  id              String        @id @default(uuid()) @db.Uuid
+  saleId          String        @map("sale_id") @db.Uuid
+  cashSessionId   String?       @map("cash_session_id") @db.Uuid
+  recordedByUserId String?      @map("recorded_by_user_id") @db.Uuid
+  method          PaymentMethod @default(CASH)
+  amount          Decimal       @db.Decimal(18, 2)
+  status          PaymentStatus @default(COMPLETED)
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
 
-  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale          Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id])
+  recordedByUser User?       @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id])
 
   @@index([saleId])
+  @@index([cashSessionId])
   @@map("payments")
+}
+
+// ─── Returns (devoluciones) ───────────────────────────────────────────────────
+
+model StockReturn {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  warehouseId     String       @map("warehouse_id") @db.Uuid
+  customerId      String?      @map("customer_id") @db.Uuid
+  saleId          String?      @map("sale_id") @db.Uuid
+  allocationId    String?      @map("allocation_id") @db.Uuid
+  createdByUserId String       @map("created_by_user_id") @db.Uuid
+  type            ReturnType
+  status          ReturnStatus @default(COMPLETED)
+  number          String
+  reason          String?
+  totalCredit     Decimal      @default(0) @map("total_credit") @db.Decimal(18, 2)
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  warehouse     Warehouse         @relation(fields: [warehouseId], references: [id])
+  customer      Customer?         @relation(fields: [customerId], references: [id])
+  sale          Sale?             @relation(fields: [saleId], references: [id])
+  createdByUser User              @relation("ReturnCreatedBy", fields: [createdByUserId], references: [id])
+  lines         StockReturnLine[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, createdAt])
+  @@map("returns")
+}
+
+model StockReturnLine {
+  id           String  @id @default(uuid()) @db.Uuid
+  returnId     String  @map("return_id") @db.Uuid
+  productId    String  @map("product_id") @db.Uuid
+  quantityBase Decimal @map("quantity_base") @db.Decimal(18, 6)
+  unitPrice    Decimal @default(0) @map("unit_price") @db.Decimal(18, 2)
+  lineCredit   Decimal @default(0) @map("line_credit") @db.Decimal(18, 2)
+
+  stockReturn StockReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+
+  @@index([returnId])
+  @@map("return_lines")
 }

@@ -17,11 +17,20 @@ export class OrderLineDto {
   @IsNumber()
   @Min(0.000001)
   quantityBase!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 }
 
 export class CreateOrderDto {
   @IsUUID()
   warehouseId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
 
   @IsOptional()
   @IsString()
