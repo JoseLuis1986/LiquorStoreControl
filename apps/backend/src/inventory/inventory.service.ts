@@ -22,7 +22,10 @@ export class InventoryService {
         tenantId,
         ...(warehouseId ? { warehouseId } : {}),
       },
-      include: { product: true, warehouse: true },
+      include: {
+        product: { include: { presentations: true } },
+        warehouse: true,
+      },
       orderBy: { updatedAt: 'desc' },
     });
   }

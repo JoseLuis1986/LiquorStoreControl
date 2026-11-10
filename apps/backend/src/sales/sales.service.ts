@@ -7,6 +7,7 @@ import {
   InventoryMovementType,
   PaymentMethod,
   Prisma,
+  SaleFulfillment,
   SaleTrigger,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,9 +39,16 @@ export class SalesService {
           : {}),
       },
       include: {
-        customer: true,
+        customer: {
+          include: {
+            cards: {
+              where: { status: 'ACTIVE' },
+              select: { id: true, label: true, status: true },
+            },
+          },
+        },
         warehouse: true,
-        lines: { include: { product: true } },
+        lines: { include: { product: true, presentation: true } },
         payments: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -52,9 +60,16 @@ export class SalesService {
     const sale = await this.prisma.sale.findFirst({
       where: { id, tenantId },
       include: {
-        customer: true,
+        customer: {
+          include: {
+            cards: {
+              where: { status: 'ACTIVE' },
+              select: { id: true, label: true, status: true },
+            },
+          },
+        },
         warehouse: true,
-        lines: { include: { product: true } },
+        lines: { include: { product: true, presentation: true } },
         payments: true,
         cashSession: true,
       },
@@ -74,6 +89,88 @@ export class SalesService {
     const trigger = dto.trigger ?? SaleTrigger.MANUAL;
     const deductStock = trigger === SaleTrigger.MANUAL;
 
+    const resolvedLines: {
+      productId: string;
+      quantityBase: Prisma.Decimal;
+      presentationId: string | null;
+      presentationQty: Prisma.Decimal | null;
+      unitPriceOverride: Prisma.Decimal | null;
+      fulfillment: SaleFulfillment;
+    }[] = [];
+
+    for (const line of dto.lines) {
+      const product = await this.prisma.product.findFirst({
+        where: { id: line.productId, tenantId, active: true },
+      });
+      if (!product) {
+        throw new NotFoundException(`Producto ${line.productId} no encontrado`);
+      }
+
+      let quantityBase: Prisma.Decimal;
+      let presentationId: string | null = null;
+      let presentationQty: Prisma.Decimal | null = null;
+      if (line.presentationId) {
+        const presentation = await this.prisma.productPresentation.findFirst({
+          where: {
+            id: line.presentationId,
+            tenantId,
+            productId: line.productId,
+          },
+        });
+        if (!presentation) throw new NotFoundException('Presentación no encontrada');
+        const count = line.quantity ?? line.quantityBase;
+        if (count == null) {
+          throw new BadRequestException('Indica cuántas presentaciones se venden');
+        }
+        presentationId = presentation.id;
+        presentationQty = toDecimal(count);
+        quantityBase = presentationQty.mul(presentation.factorToBase);
+      } else if (line.quantityBase != null) {
+        quantityBase = toDecimal(line.quantityBase);
+      } else if (line.quantity != null) {
+        quantityBase = toDecimal(line.quantity);
+      } else {
+        throw new BadRequestException('Indica la cantidad');
+      }
+
+      const lineFulfillment =
+        line.fulfillment === 'ON_PREMISE' ||
+        (line.fulfillment == null && dto.fulfillment === 'ON_PREMISE')
+          ? SaleFulfillment.ON_PREMISE
+          : SaleFulfillment.TAKEAWAY;
+      resolvedLines.push({
+        productId: line.productId,
+        quantityBase,
+        presentationId,
+        presentationQty,
+        unitPriceOverride:
+          line.unitPrice != null ? toDecimal(line.unitPrice) : null,
+        fulfillment: lineFulfillment,
+      });
+    }
+
+    const fulfillment = resolvedLines.some(
+      (line) => line.fulfillment === SaleFulfillment.ON_PREMISE,
+    )
+      ? SaleFulfillment.ON_PREMISE
+      : SaleFulfillment.TAKEAWAY;
+
+    if (fulfillment === SaleFulfillment.ON_PREMISE && !dto.customerId) {
+      throw new BadRequestException(
+        'Para consumir en el local elige la mesa o el cliente de la tarjeta',
+      );
+    }
+    if (fulfillment === SaleFulfillment.ON_PREMISE && dto.customerId) {
+      const card = await this.prisma.card.findFirst({
+        where: { tenantId, customerId: dto.customerId, status: 'ACTIVE' },
+      });
+      if (!card) {
+        throw new BadRequestException(
+          'Ese cliente no tiene tarjeta activa. El dueño debe emitirla e imprimir el QR.',
+        );
+      }
+    }
+
     let cashSessionId = dto.cashSessionId;
     if (!cashSessionId) {
       const open = await this.prisma.cashSession.findFirst({
@@ -90,21 +187,25 @@ export class SalesService {
       const lineData: {
         productId: string;
         quantityBase: Prisma.Decimal;
+        presentationId: string | null;
+        presentationQty: Prisma.Decimal | null;
         unitPrice: Prisma.Decimal;
         lineTotal: Prisma.Decimal;
+        fulfillment: SaleFulfillment;
       }[] = [];
 
-      for (const line of dto.lines) {
-        const qty = toDecimal(line.quantityBase);
+      for (const line of resolvedLines) {
         const unitPrice =
-          line.unitPrice != null
-            ? toDecimal(line.unitPrice)
-            : await resolveUnitPrice(tx, tenantId, line.productId, dto.customerId);
+          line.unitPriceOverride ??
+          (await resolveUnitPrice(tx, tenantId, line.productId, dto.customerId));
         lineData.push({
           productId: line.productId,
-          quantityBase: qty,
+          quantityBase: line.quantityBase,
+          presentationId: line.presentationId,
+          presentationQty: line.presentationQty,
           unitPrice,
-          lineTotal: qty.mul(unitPrice),
+          lineTotal: line.quantityBase.mul(unitPrice),
+          fulfillment: line.fulfillment,
         });
       }
 
@@ -122,6 +223,7 @@ export class SalesService {
           cashSessionId,
           number,
           trigger,
+          fulfillment,
           status: 'PENDING',
           totalAmount,
           amountPaid: toDecimal(0),
@@ -145,6 +247,39 @@ export class SalesService {
             referenceId: created.id,
             notes: `Venta ${number}`,
             tx,
+          });
+        }
+      }
+
+      if (dto.customerId) {
+        for (const line of lineData.filter(
+          (item) => item.fulfillment === SaleFulfillment.ON_PREMISE,
+        )) {
+          await tx.customerAllocationBalance.upsert({
+            where: {
+              tenantId_customerId_warehouseId_productId: {
+                tenantId,
+                customerId: dto.customerId,
+                warehouseId: dto.warehouseId,
+                productId: line.productId,
+              },
+            },
+            create: {
+              tenantId,
+              customerId: dto.customerId,
+              warehouseId: dto.warehouseId,
+              productId: line.productId,
+              quantityBase: line.quantityBase,
+              quantityAssigned: line.quantityBase,
+              quantityConsumed: toDecimal(0),
+              quantityReturned: toDecimal(0),
+              quantityPrepaid: line.quantityBase,
+            },
+            update: {
+              quantityBase: { increment: line.quantityBase },
+              quantityAssigned: { increment: line.quantityBase },
+              quantityPrepaid: { increment: line.quantityBase },
+            },
           });
         }
       }

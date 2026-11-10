@@ -43,6 +43,12 @@ export class CardsController {
     return this.cards.issue(user.tenantId, dto);
   }
 
+  @Get(':id/artwork')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  artwork(@CurrentUser() user: AuthUserContext, @Param('id') id: string) {
+    return this.cards.artwork(user.tenantId, id);
+  }
+
   @Post('resolve')
   @Roles(...STAFF)
   resolve(@CurrentUser() user: AuthUserContext, @Body() dto: ResolveCardDto) {

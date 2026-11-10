@@ -17,7 +17,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (session) return <Navigate to="/" replace />;
+  if (session) {
+    return <Navigate to={session.user.role === 'EMPLOYEE' ? '/servicio' : '/'} replace />;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -41,7 +43,7 @@ export function LoginPage() {
         <Stack spacing={2}>
           <Typography variant="h4">Ingresar</Typography>
           <Typography color="text.secondary" variant="body2">
-            Tenant demo: admin@demo.local / Admin123!
+            Dueño: admin@demo.local / Admin123! · Camarero: camarero@demo.local / Camarero123!
           </Typography>
           <TextField
             label="Email"

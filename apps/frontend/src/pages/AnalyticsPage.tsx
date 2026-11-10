@@ -15,6 +15,7 @@ import {
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from '../context/BranchContext';
+import { useExchange } from '../context/ExchangeContext';
 
 type Trends = {
   days: number;
@@ -40,6 +41,7 @@ type Trends = {
 
 export function AnalyticsPage() {
   const { token } = useAuth();
+  const { money } = useExchange();
   const { branchId } = useBranch();
   const [days, setDays] = useState(14);
   const [data, setData] = useState<Trends | null>(null);
@@ -89,7 +91,7 @@ export function AnalyticsPage() {
           <Typography variant="subtitle2" color="text.secondary">
             Ventas (periodo)
           </Typography>
-          <Typography variant="h4">${data.totals.salesAmount.toFixed(2)}</Typography>
+          <Typography variant="h4">{money(data.totals.salesAmount)}</Typography>
           <Typography variant="body2">{data.totals.salesCount} tickets</Typography>
         </Paper>
         <Paper elevation={0} sx={{ p: 2, flex: 1, border: '1px solid', borderColor: 'divider' }}>
@@ -111,7 +113,7 @@ export function AnalyticsPage() {
                 {s.date.slice(5)}
               </Typography>
               <div
-                title={`Ventas $${s.salesAmount.toFixed(2)}`}
+                title={`Ventas ${money(s.salesAmount)}`}
                 style={{
                   height: 10,
                   width: `${Math.max(4, (s.salesAmount / maxSales) * 100)}%`,

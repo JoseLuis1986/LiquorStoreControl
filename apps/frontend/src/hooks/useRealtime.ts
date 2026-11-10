@@ -6,7 +6,7 @@ const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ??
   (import.meta.env.VITE_API_URL
     ? String(import.meta.env.VITE_API_URL).replace(/\/api\/v1\/?$/, '')
-    : 'http://localhost:3000');
+    : '');
 
 export type RealtimeEvent = {
   name: string;
@@ -28,9 +28,11 @@ export function useRealtime(enabled = true) {
       return;
     }
 
+    const throughDevProxy = SOCKET_URL === '';
     const socket = io(`${SOCKET_URL}/realtime`, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      // El proxy de Vite corta el websocket del teléfono (ECONNRESET). Por HTTP largo sigue llegando el evento.
+      transports: throughDevProxy ? ['polling'] : ['websocket', 'polling'],
     });
     socketRef.current = socket;
 

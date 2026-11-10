@@ -4,6 +4,12 @@ import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 
+if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => void reg.unregister());
+  });
+}
+
 const theme = createTheme({
   palette: {
     mode: 'light',

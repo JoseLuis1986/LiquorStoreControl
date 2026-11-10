@@ -23,7 +23,7 @@ export class CustomersService {
           orderBy: { issuedAt: 'desc' },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { code: 'asc' },
     });
   }
 
@@ -58,10 +58,21 @@ export class CustomersService {
 
   async update(tenantId: string, id: string, dto: UpdateCustomerDto) {
     await this.ensure(tenantId, id);
-    return this.prisma.customer.update({
+    const updated = await this.prisma.customer.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        email: dto.email === '' ? null : dto.email,
+        phone: dto.phone === '' ? null : dto.phone,
+      },
     });
+    if (dto.name) {
+      await this.prisma.card.updateMany({
+        where: { tenantId, customerId: id, status: 'ACTIVE' },
+        data: { label: dto.name },
+      });
+    }
+    return updated;
   }
 
   async updateBilling(tenantId: string, id: string, dto: UpdateBillingModesDto) {

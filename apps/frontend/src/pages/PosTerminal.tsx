@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { api } from '../api/client';
+import { newId } from '../id';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from '../context/BranchContext';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -159,7 +160,7 @@ export function PosTerminal() {
     if (!resolved) return;
     setError(null);
     setMessage(null);
-    const idem = crypto.randomUUID();
+    const idem = newId();
     const body = {
       customerId: resolved.customer.id,
       warehouseId,
@@ -173,7 +174,7 @@ export function PosTerminal() {
 
     if (!online) {
       await enqueueOfflineOp({
-        id: crypto.randomUUID(),
+        id: newId(),
         type: 'consumption',
         path: '/consumptions',
         method: 'POST',
@@ -210,7 +211,7 @@ export function PosTerminal() {
     } catch (err) {
       if (!navigator.onLine) {
         await enqueueOfflineOp({
-          id: crypto.randomUUID(),
+          id: newId(),
           type: 'consumption',
           path: '/consumptions',
           method: 'POST',

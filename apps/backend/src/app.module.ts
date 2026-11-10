@@ -29,7 +29,10 @@ import { BranchesModule } from './branches/branches.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { ExchangeModule } from './exchange/exchange.module';
+import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { EmployeeScopeInterceptor } from './common/interceptors/employee-scope.interceptor';
 
 @Module({
   imports: [
@@ -64,9 +67,15 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ReportsModule,
     AlertsModule,
     AnalyticsModule,
+    ExchangeModule,
+    ServiceDeskModule,
   ],
   controllers: [HealthController],
   providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: EmployeeScopeInterceptor,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,

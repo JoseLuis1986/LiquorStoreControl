@@ -3,6 +3,10 @@ import {
   Alert,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Paper,
   Stack,
   Table,
@@ -20,6 +24,8 @@ type Customer = {
   id: string;
   code: string;
   name: string;
+  email: string | null;
+  phone: string | null;
   billingModes: string[];
   status: string;
   cards: { id: string; status: string; label: string | null }[];
@@ -32,6 +38,10 @@ export function CustomersPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
 
   async function reload() {
     if (!token) return;
@@ -58,6 +68,34 @@ export function CustomersPage() {
       });
       setCode('');
       setName('');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
+  function openEdit(customer: Customer) {
+    setEditing(customer);
+    setEditName(customer.name);
+    setEditPhone(customer.phone ?? '');
+    setEditEmail(customer.email ?? '');
+  }
+
+  async function saveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setError(null);
+    try {
+      await api('/customers/' + editing.id, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          name: editName,
+          phone: editPhone,
+          email: editEmail,
+        }),
+      });
+      setEditing(null);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
@@ -157,6 +195,9 @@ export function CustomersPage() {
                   ))}
                 </TableCell>
                 <TableCell>
+                  <Button size="small" onClick={() => openEdit(c)}>
+                    Editar
+                  </Button>
                   <Button size="small" onClick={() => issueCard(c.id)}>
                     Emitir QR
                   </Button>
@@ -166,6 +207,41 @@ export function CustomersPage() {
           </TableBody>
         </Table>
       </Paper>
+
+      <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
+        <form onSubmit={saveEdit}>
+          <DialogTitle>Editar {editing?.code}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <TextField label="Identificador" value={editing?.code ?? ''} disabled />
+              <TextField
+                label="Nombre"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                required
+                autoFocus
+              />
+              <TextField
+                label="Teléfono"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+              />
+              <TextField
+                label="Correo"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditing(null)}>Cancelar</Button>
+            <Button type="submit" variant="contained">
+              Guardar
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </Stack>
   );
 }

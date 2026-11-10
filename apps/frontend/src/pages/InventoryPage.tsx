@@ -17,13 +17,32 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 type Warehouse = { id: string; code: string; name: string };
-type Product = { id: string; sku: string; name: string };
+type Presentation = { id: string; name: string; factorToBase: string };
+type Product = {
+  id: string;
+  sku: string;
+  name: string;
+  presentations?: Presentation[];
+};
 type Balance = {
   id: string;
   quantityBase: string;
   product: Product;
   warehouse: Warehouse;
 };
+
+function stockLabel(quantityBase: string, presentations?: Presentation[]) {
+  const qty = Number(quantityBase);
+  const boxes = (presentations ?? [])
+    .filter((p) => Number(p.factorToBase) > 1)
+    .sort((a, b) => Number(b.factorToBase) - Number(a.factorToBase));
+  if (!boxes.length || !Number.isFinite(qty)) return quantityBase;
+  const factor = Number(boxes[0].factorToBase);
+  const whole = Math.floor(qty / factor);
+  const rest = Math.round((qty - whole * factor) * 1000) / 1000;
+  const loose = rest > 0 ? ` + ${rest} u` : '';
+  return `${qty} u · ${whole} ${boxes[0].name}${loose}`;
+}
 type Movement = {
   id: string;
   type: string;
@@ -42,7 +61,8 @@ export function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [productId, setProductId] = useState('');
-  const [qty, setQty] = useState('12');
+  const [presentationId, setPresentationId] = useState('');
+  const [qty, setQty] = useState('1');
   const [error, setError] = useState<string | null>(null);
 
   async function reload() {
@@ -66,6 +86,11 @@ export function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  const selected = products.find((p) => p.id === productId);
+  const presentations = selected?.presentations ?? [];
+  const presentation = presentations.find((p) => p.id === presentationId);
+  const factor = presentation ? Number(presentation.factorToBase) : 1;
+
   async function onInitial(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -76,8 +101,10 @@ export function InventoryPage() {
         body: JSON.stringify({
           warehouseId,
           productId,
-          quantityBase: Number(qty),
-          notes: 'Entrada desde UI',
+          quantityBase: Number(qty) * factor,
+          notes: presentation
+            ? `Entrada ${qty} × ${presentation.name}`
+            : 'Entrada desde UI',
         }),
       });
       await reload();
@@ -111,7 +138,10 @@ export function InventoryPage() {
               select
               label="Producto"
               value={productId}
-              onChange={(e) => setProductId(e.target.value)}
+              onChange={(e) => {
+                setProductId(e.target.value);
+                setPresentationId('');
+              }}
               sx={{ flex: 1 }}
             >
               {products.map((p) => (
@@ -121,11 +151,26 @@ export function InventoryPage() {
               ))}
             </TextField>
             <TextField
-              label="Cantidad base"
+              select
+              label="Presentación"
+              value={presentationId}
+              onChange={(e) => setPresentationId(e.target.value)}
+              sx={{ minWidth: 160 }}
+            >
+              <MenuItem value="">Unidad base</MenuItem>
+              {presentations.map((pr) => (
+                <MenuItem key={pr.id} value={pr.id}>
+                  {pr.name} (×{Number(pr.factorToBase)})
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label={presentation ? `Cantidad de ${presentation.name}` : 'Cantidad'}
               type="number"
               value={qty}
               onChange={(e) => setQty(e.target.value)}
-              sx={{ width: 140 }}
+              sx={{ width: 180 }}
+              helperText={`${Number(qty) || 0} × ${factor} = ${(Number(qty) || 0) * factor} u`}
             />
             <Button type="submit" variant="contained">
               Registrar
@@ -148,7 +193,7 @@ export function InventoryPage() {
             <TableRow>
               <TableCell>Almacén</TableCell>
               <TableCell>Producto</TableCell>
-              <TableCell align="right">Cantidad base</TableCell>
+              <TableCell align="right">Cantidad</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -158,7 +203,9 @@ export function InventoryPage() {
                 <TableCell>
                   {b.product.sku} — {b.product.name}
                 </TableCell>
-                <TableCell align="right">{b.quantityBase}</TableCell>
+                <TableCell align="right">
+                  {stockLabel(b.quantityBase, b.product.presentations)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -13,7 +13,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { api } from '../api/client';
+import { API_BASE, api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 type Allocation = {
@@ -123,7 +123,7 @@ export function ReturnsPage() {
         setMsg(`Devolución ${ret.number} · crédito ${ret.totalCredit}`);
         // open receipt
         const html = await fetch(
-          `${import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'}/receipts/returns/${ret.id}`,
+          `${API_BASE}/receipts/returns/${ret.id}`,
           { headers: { Authorization: `Bearer ${token}` } },
         ).then((r) => r.text());
         const w = window.open('', '_blank');
@@ -241,7 +241,7 @@ export function ReturnsPage() {
                     size="small"
                     onClick={async () => {
                       const html = await fetch(
-                        `${import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1'}/receipts/returns/${r.id}`,
+                        `${API_BASE}/receipts/returns/${r.id}`,
                         { headers: { Authorization: `Bearer ${token}` } },
                       ).then((res) => res.text());
                       const w = window.open('', '_blank');

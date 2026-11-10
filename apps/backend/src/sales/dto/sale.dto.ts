@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -16,14 +17,32 @@ export class ManualSaleLineDto {
   @IsUUID()
   productId!: string;
 
+  /** Unidades base. Obligatorio si no se vende por presentación. */
+  @IsOptional()
   @IsNumber()
   @Min(0.000001)
-  quantityBase!: number;
+  quantityBase?: number;
+
+  /** Presentación (caja, six, unidad). La cantidad va en `quantity`. */
+  @IsOptional()
+  @IsUUID()
+  presentationId?: string;
+
+  /** Cuántas presentaciones (1 caja) o, sin presentación, unidades. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.000001)
+  quantity?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
   unitPrice?: number;
+
+  /** TAKEAWAY se entrega ya. ON_PREMISE queda en la tarjeta. */
+  @IsOptional()
+  @IsIn(['TAKEAWAY', 'ON_PREMISE'])
+  fulfillment?: 'TAKEAWAY' | 'ON_PREMISE';
 }
 
 export class CreateManualSaleDto {
@@ -41,6 +60,11 @@ export class CreateManualSaleDto {
   @IsOptional()
   @IsEnum(SaleTrigger)
   trigger?: SaleTrigger;
+
+  /** TAKEAWAY se lleva el producto. ON_PREMISE carga el saldo en la tarjeta. */
+  @IsOptional()
+  @IsIn(['TAKEAWAY', 'ON_PREMISE'])
+  fulfillment?: 'TAKEAWAY' | 'ON_PREMISE';
 
   @IsArray()
   @ArrayMinSize(1)

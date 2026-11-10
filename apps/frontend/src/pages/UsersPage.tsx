@@ -29,6 +29,13 @@ type Perm = { id: string; code: string; name: string; module: string };
 type RolePerm = { role: string; permission: Perm };
 
 const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'CUSTOMER'];
+const ROLE_LABEL: Record<string, string> = {
+  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
+  MANAGER: 'MANAGER',
+  EMPLOYEE: 'EMPLOYEE (camarero)',
+  CUSTOMER: 'CUSTOMER',
+};
 
 export function UsersPage() {
   const { token } = useAuth();
@@ -127,9 +134,9 @@ export function UsersPage() {
             <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <TextField label="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             <TextField select label="Rol" value={role} onChange={(e) => setRole(e.target.value)} sx={{ minWidth: 140 }}>
-              {ROLES.map((r) => (
+                {ROLES.map((r) => (
                 <MenuItem key={r} value={r}>
-                  {r}
+                  {ROLE_LABEL[r] ?? r}
                 </MenuItem>
               ))}
             </TextField>
@@ -169,11 +176,11 @@ export function UsersPage() {
                     onChange={(e) => changeRole(u.id, e.target.value)}
                     sx={{ minWidth: 120 }}
                   >
-                    {ROLES.map((r) => (
-                      <MenuItem key={r} value={r}>
-                        {r}
-                      </MenuItem>
-                    ))}
+                {ROLES.map((r) => (
+                <MenuItem key={r} value={r}>
+                  {ROLE_LABEL[r] ?? r}
+                </MenuItem>
+              ))}
                   </TextField>
                 </TableCell>
               </TableRow>
@@ -195,7 +202,7 @@ export function UsersPage() {
         >
           {ROLES.filter((r) => r !== 'OWNER').map((r) => (
             <MenuItem key={r} value={r}>
-              {r}
+              {ROLE_LABEL[r] ?? r}
             </MenuItem>
           ))}
         </TextField>

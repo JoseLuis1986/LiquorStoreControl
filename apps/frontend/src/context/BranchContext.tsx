@@ -31,14 +31,15 @@ const STORAGE_KEY = 'liquorcontrol.branchId';
 const BranchCtx = createContext<BranchContextValue | null>(null);
 
 export function BranchProvider({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { token, session } = useAuth();
+  const waiter = session?.user.role === 'EMPLOYEE';
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchIdState] = useState<string | null>(() =>
     localStorage.getItem(STORAGE_KEY),
   );
 
   const refresh = useCallback(async () => {
-    if (!token) {
+    if (!token || waiter) {
       setBranches([]);
       return;
     }
@@ -49,7 +50,7 @@ export function BranchProvider({ children }: { children: React.ReactNode }) {
       setBranchIdState(next);
       localStorage.setItem(STORAGE_KEY, next);
     }
-  }, [token, branchId]);
+  }, [token, branchId, waiter]);
 
   useEffect(() => {
     void refresh().catch(() => setBranches([]));

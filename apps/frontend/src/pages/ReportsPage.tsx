@@ -13,10 +13,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { api } from '../api/client';
+import { API_BASE, api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+import { useExchange } from '../context/ExchangeContext';
 
 type InvReport = {
   rows: {
@@ -37,7 +36,7 @@ type Statement = {
 };
 
 async function download(path: string, token: string, filename: string) {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(await res.text());
@@ -52,6 +51,7 @@ async function download(path: string, token: string, filename: string) {
 
 export function ReportsPage() {
   const { token } = useAuth();
+  const { money } = useExchange();
   const [inv, setInv] = useState<InvReport | null>(null);
   const [top, setTop] = useState<{ sku: string; name: string; qty: number; revenue: number }[]>([]);
   const [profit, setProfit] = useState<Record<string, number> | null>(null);
@@ -151,7 +151,7 @@ export function ReportsPage() {
 
       <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6">
-          Inventario valorizado — total ${inv?.totalValue.toFixed(2) ?? '…'}
+          Inventario valorizado — total {inv ? money(inv.totalValue) : '…'}
         </Typography>
         <Table size="small">
           <TableHead>
@@ -168,7 +168,7 @@ export function ReportsPage() {
                 <TableCell>{r.warehouse}</TableCell>
                 <TableCell>{r.sku}</TableCell>
                 <TableCell align="right">{r.quantityBase}</TableCell>
-                <TableCell align="right">{r.value.toFixed(2)}</TableCell>
+                <TableCell align="right">{money(r.value)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -192,7 +192,7 @@ export function ReportsPage() {
                   {r.sku} — {r.name}
                 </TableCell>
                 <TableCell align="right">{r.qty}</TableCell>
-                <TableCell align="right">{r.revenue.toFixed(2)}</TableCell>
+                <TableCell align="right">{money(r.revenue)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -203,11 +203,8 @@ export function ReportsPage() {
         <Typography variant="h6">Rentabilidad básica</Typography>
         {profit ? (
           <Typography>
-            Ingresos cobrados: ${profit.revenue?.toFixed?.(2) ?? profit.revenue} · COGS est.: $
-            {Number(profit.estimatedCogs).toFixed(2)} · Margen est.: $
-            {Number(profit.grossMarginEstimate).toFixed(2)} (
-            {Number(profit.marginPct).toFixed(1)}%) · Compras recibidas: $
-            {Number(profit.purchaseCost).toFixed(2)}
+            Ingresos cobrados: {money(profit.revenue ?? 0)} · COGS est.: {money(profit.estimatedCogs ?? 0)} · Margen est.: {money(profit.grossMarginEstimate ?? 0)} (
+            {Number(profit.marginPct).toFixed(1)}%) · Compras recibidas: {money(profit.purchaseCost ?? 0)}
           </Typography>
         ) : null}
       </Paper>
@@ -227,7 +224,7 @@ export function ReportsPage() {
               <TableRow key={p.number}>
                 <TableCell>{p.number}</TableCell>
                 <TableCell>{p.supplier}</TableCell>
-                <TableCell align="right">{p.totalAmount}</TableCell>
+                <TableCell align="right">{money(p.totalAmount)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -268,7 +265,7 @@ export function ReportsPage() {
         {statement ? (
           <>
             <Typography sx={{ mb: 1 }}>
-              {statement.customer.code} — CxC abierta: ${statement.openReceivable}
+              {statement.customer.code} — CxC abierta: {money(statement.openReceivable)}
             </Typography>
             <Table size="small">
               <TableHead>
@@ -285,9 +282,9 @@ export function ReportsPage() {
                   <TableRow key={s.number}>
                     <TableCell>{s.number}</TableCell>
                     <TableCell>{s.status}</TableCell>
-                    <TableCell align="right">{s.totalAmount}</TableCell>
-                    <TableCell align="right">{s.amountPaid}</TableCell>
-                    <TableCell align="right">{s.due}</TableCell>
+                    <TableCell align="right">{money(s.totalAmount)}</TableCell>
+                    <TableCell align="right">{money(s.amountPaid)}</TableCell>
+                    <TableCell align="right">{money(s.due)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

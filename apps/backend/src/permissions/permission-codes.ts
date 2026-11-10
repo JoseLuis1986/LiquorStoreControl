@@ -34,12 +34,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionCode[]> = {
     'pos:operate',
     'customers:write',
   ],
-  EMPLOYEE: [
-    'dashboard:read',
-    'inventory:read',
-    'sales:read',
-    'sales:write',
-    'pos:operate',
-  ],
+  EMPLOYEE: [],
   CUSTOMER: [],
 };

@@ -103,6 +103,7 @@ export class ConsumptionsService {
           },
         });
 
+        const billable: { productId: string; quantityBase: Prisma.Decimal }[] = [];
         for (const line of dto.lines) {
           const qty = toDecimal(line.quantityBase);
           const bal = await tx.customerAllocationBalance.findUnique({
@@ -117,23 +118,29 @@ export class ConsumptionsService {
           });
           if (!bal || toDecimal(bal.quantityBase).lt(qty)) {
             throw new ConflictException(
-              `Saldo asignado insuficiente para producto ${line.productId}`,
+              'No quedan suficientes unidades asignadas. Otro despacho ya las tomó.',
             );
           }
+          const prepaid = toDecimal(bal.quantityPrepaid);
+          const fromPrepaid = prepaid.gte(qty) ? qty : prepaid;
+          const chargeQty = qty.sub(fromPrepaid);
           await tx.customerAllocationBalance.update({
             where: { id: bal.id },
             data: {
               quantityBase: { decrement: qty },
               quantityConsumed: { increment: qty },
+              quantityPrepaid: { decrement: fromPrepaid },
             },
           });
+          if (chargeQty.gt(0)) {
+            billable.push({ productId: line.productId, quantityBase: chargeQty });
+          }
         }
 
         const modes = (customer.billingModes as string[]) ?? [];
-        if (modes.includes('CHARGE_ON_CONSUMPTION')) {
+        if (modes.includes('CHARGE_ON_CONSUMPTION') && billable.length > 0) {
           const saleLines = [];
-          for (const l of dto.lines) {
-            const qty = toDecimal(l.quantityBase);
+          for (const l of billable) {
             const unitPrice = await resolveUnitPrice(
               tx,
               tenantId,
@@ -142,9 +149,9 @@ export class ConsumptionsService {
             );
             saleLines.push({
               productId: l.productId,
-              quantityBase: qty,
+              quantityBase: l.quantityBase,
               unitPrice,
-              lineTotal: qty.mul(unitPrice),
+              lineTotal: l.quantityBase.mul(unitPrice),
             });
           }
           const totalAmount = saleLines.reduce(

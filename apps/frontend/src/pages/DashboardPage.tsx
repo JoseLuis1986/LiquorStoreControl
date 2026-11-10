@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useExchange } from '../context/ExchangeContext';
 
 type Summary = {
   inventory: { skuCount: number; balanceLines: number; stockValue: string };
@@ -40,6 +41,7 @@ type Summary = {
 
 export function DashboardPage() {
   const { token } = useAuth();
+  const { money } = useExchange();
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +63,7 @@ export function DashboardPage() {
           <Typography variant="subtitle2" color="text.secondary">
             Inventario valorizado
           </Typography>
-          <Typography variant="h4">${data.inventory.stockValue}</Typography>
+          <Typography variant="h4">{money(data.inventory.stockValue)}</Typography>
           <Typography variant="body2">
             {data.inventory.skuCount} SKUs · {data.inventory.balanceLines} saldos
           </Typography>
@@ -70,9 +72,9 @@ export function DashboardPage() {
           <Typography variant="subtitle2" color="text.secondary">
             Ventas del día
           </Typography>
-          <Typography variant="h4">${data.salesToday.totalAmount}</Typography>
+          <Typography variant="h4">{money(data.salesToday.totalAmount)}</Typography>
           <Typography variant="body2">
-            {data.salesToday.count} ventas · cobrado ${data.salesToday.amountPaid}
+            {data.salesToday.count} ventas · cobrado {money(data.salesToday.amountPaid)}
           </Typography>
         </Paper>
         <Paper elevation={0} sx={{ p: 2, flex: 1, border: '1px solid', borderColor: 'divider' }}>
@@ -112,7 +114,7 @@ export function DashboardPage() {
                 <TableCell>{p.sku}</TableCell>
                 <TableCell>{p.name}</TableCell>
                 <TableCell align="right">{p.qty}</TableCell>
-                <TableCell align="right">{p.amount.toFixed(2)}</TableCell>
+                <TableCell align="right">{money(p.amount)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

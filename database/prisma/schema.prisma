@@ -85,6 +85,16 @@ enum SaleTrigger {
   MANUAL
 }
 
+enum SaleFulfillment {
+  TAKEAWAY
+  ON_PREMISE
+}
+
+enum ExchangeRateMode {
+  MANUAL
+  AUTOMATIC
+}
+
 enum SaleStatus {
   PENDING
   PAID
@@ -162,6 +172,8 @@ model Tenant {
   rolePermissions             RolePermission[]
   userPermissions             UserPermission[]
   stockTransfers              StockTransfer[]
+  exchangeRate                ExchangeRateSetting?
+  serviceVisits               ServiceVisit[]
 
   @@map("tenants")
 }
@@ -191,6 +203,7 @@ model User {
   defaultBranchId    String?       @map("default_branch_id") @db.Uuid
   defaultBranch      Branch?       @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id])
   stockTransfers     StockTransfer[] @relation("TransferCreatedBy")
+  serviceVisits      ServiceVisit[]  @relation("ServiceVisitUser")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -221,6 +234,7 @@ model Customer {
   sales               Sale[]
   returns             StockReturn[]
   prices              CustomerPrice[]
+  serviceVisits       ServiceVisit[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -293,7 +307,7 @@ model Product {
   name             String
   modality         ProductModality @default(UNIT)
   active           Boolean         @default(true)
-  /// Precio de venta por unidad base (MXN). Listas por cliente pueden sobreescribir.
+  /// Precio de venta por unidad base, en USD. El bolívar sale de la tasa BCV.
   defaultUnitPrice Decimal         @default(0) @map("default_unit_price") @db.Decimal(18, 2)
   /// Alerta de stock bajo cuando el balance general ≤ este mínimo (unidad base).
   minStock         Decimal         @default(0) @map("min_stock") @db.Decimal(18, 6)
@@ -354,6 +368,7 @@ model ProductPresentation {
   product         Product          @relation(fields: [productId], references: [id])
   unit            UnitOfMeasure    @relation(fields: [unitId], references: [id])
   allocationLines AllocationLine[]
+  saleLines       SaleLine[]
 
   @@unique([tenantId, productId, name])
   @@index([tenantId, productId])
@@ -625,6 +640,8 @@ model CustomerAllocationBalance {
   quantityAssigned  Decimal  @default(0) @map("quantity_assigned") @db.Decimal(18, 6)
   quantityConsumed  Decimal  @default(0) @map("quantity_consumed") @db.Decimal(18, 6)
   quantityReturned  Decimal  @default(0) @map("quantity_returned") @db.Decimal(18, 6)
+  /// Unidades ya cobradas (venta en el local). El consumo las descuenta sin volver a facturar.
+  quantityPrepaid   Decimal  @default(0) @map("quantity_prepaid") @db.Decimal(18, 6)
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id])
@@ -660,6 +677,38 @@ model Consumption {
   @@map("consumptions")
 }
 
+/// El camarero abrió o escaneó la tarjeta. El despacho queda en Consumption.
+model ServiceVisit {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+  user     User     @relation("ServiceVisitUser", fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, customerId, createdAt])
+  @@map("service_visits")
+}
+
+/// 1 USD = usdToVes bolívares. Los precios del catálogo están en dólares.
+model ExchangeRateSetting {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @unique @map("tenant_id") @db.Uuid
+  mode      ExchangeRateMode @default(AUTOMATIC)
+  usdToVes  Decimal          @default(0) @map("usd_to_ves") @db.Decimal(18, 6)
+  source    String           @default("BCV")
+  fetchedAt DateTime?        @map("fetched_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("exchange_rate_settings")
+}
+
 model ConsumptionLine {
   id            String  @id @default(uuid()) @db.Uuid
   consumptionId String  @map("consumption_id") @db.Uuid
@@ -683,10 +732,12 @@ model Sale {
   cashSessionId String?     @map("cash_session_id") @db.Uuid
   number        String?
   trigger       SaleTrigger
+  /// TAKEAWAY: se lleva el producto. ON_PREMISE: queda saldo en la tarjeta.
+  fulfillment   SaleFulfillment @default(TAKEAWAY)
   status        SaleStatus  @default(PENDING)
   totalAmount   Decimal     @default(0) @map("total_amount") @db.Decimal(18, 2)
   amountPaid    Decimal     @default(0) @map("amount_paid") @db.Decimal(18, 2)
-  currency      String      @default("MXN")
+  currency      String      @default("USD")
   referenceId   String?     @map("reference_id") @db.Uuid
   referenceType String?     @map("reference_type")
   createdAt     DateTime    @default(now()) @map("created_at")
@@ -709,13 +760,19 @@ model Sale {
 model SaleLine {
   id           String  @id @default(uuid()) @db.Uuid
   saleId       String  @map("sale_id") @db.Uuid
-  productId    String  @map("product_id") @db.Uuid
-  quantityBase Decimal @map("quantity_base") @db.Decimal(18, 6)
-  unitPrice    Decimal @map("unit_price") @db.Decimal(18, 2)
-  lineTotal    Decimal @map("line_total") @db.Decimal(18, 2)
+  productId       String   @map("product_id") @db.Uuid
+  presentationId  String?  @map("presentation_id") @db.Uuid
+  /// Cantidad en la presentación vendida (1 caja). quantityBase queda en unidad base.
+  presentationQty Decimal? @map("presentation_qty") @db.Decimal(18, 6)
+  quantityBase    Decimal  @map("quantity_base") @db.Decimal(18, 6)
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(18, 2)
+  lineTotal       Decimal  @map("line_total") @db.Decimal(18, 2)
+  /// TAKEAWAY se entrega al cobrar. ON_PREMISE queda en la tarjeta y se despacha por partes.
+  fulfillment     SaleFulfillment @default(TAKEAWAY)
 
-  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  sale         Sale                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id])
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id])
 
   @@index([saleId])
   @@map("sale_lines")

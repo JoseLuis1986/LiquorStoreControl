@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+/** Misma origen que la página. En el teléfono pasa por el proxy de Vite y no apunta a localhost del móvil. */
+export const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 export type AuthSession = {
   accessToken: string;
